@@ -1,0 +1,63 @@
+<div id="player-ui" class="player-ui">
+  <div id="danmaku-layer" class="danmaku-layer" aria-hidden="true"></div>
+  <div id="danmaku-panel" class="danmaku-panel" hidden role="dialog" aria-label="弹幕设置">
+    <div class="dm-section">弹幕位置</div>
+    <div class="dm-positions">
+      <button type="button" data-pos="mega"><span class="dm-shape dm-shape-mega"></span>海量全屏</button>
+      <button type="button" data-pos="full"><span class="dm-shape dm-shape-full"></span>全屏</button>
+      <button type="button" data-pos="half"><span class="dm-shape dm-shape-half"></span>半屏</button>
+      <button type="button" data-pos="top"><span class="dm-shape dm-shape-top"></span>上方</button>
+    </div>
+    <div class="dm-section">字体大小</div>
+    <div class="dm-sizes">
+      <button type="button" data-size="large">大</button>
+      <button type="button" data-size="medium">中</button>
+      <button type="button" data-size="small">小</button>
+    </div>
+    <div class="dm-section">弹幕速度</div>
+    <div class="dm-speeds">
+      <button type="button" data-speed="slow">慢</button>
+      <button type="button" data-speed="medium">适中</button>
+      <button type="button" data-speed="fast">快</button>
+    </div>
+    <div class="dm-section">不透明度</div>
+    <div class="dm-opacity">
+      <input id="dm-opacity" type="range" min="10" max="100" step="5" value="80" aria-label="弹幕不透明度">
+      <span id="dm-opacity-value">80%</span>
+    </div>
+    <label class="dm-switch"><span>显示弹幕</span><input id="dm-enabled" type="checkbox" role="switch" aria-label="显示弹幕"></label>
+  </div>
+  <div class="top-shade"><div id="player-title" class="player-title"></div><div id="episode-label" class="episode-label"></div></div>
+  <div id="volume-toast" class="volume-toast" aria-hidden="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path id="volume-toast-icon" d="M3 9v6h4l5 4V5L7 9z"/></svg>
+    <span id="volume-toast-value">0%</span>
+  </div>
+  <div id="volume-panel" class="volume-panel" hidden>
+    <span id="volume-value" class="volume-value">80</span>
+    <div class="volume-track"><input id="volume-slider" class="volume-slider" type="range" min="0" max="100" step="1" value="80" aria-label="音量"></div>
+  </div>
+  <div class="bottom-shade">
+    <div class="seek-wrap"><input id="seek" class="seek" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度"><output id="seek-preview" class="seek-preview" hidden></output></div>
+    <div class="button-row">
+      <div class="left-buttons">
+        <button id="previous" class="icon-button" type="button" aria-label="上一集" title="上一集"></button>
+        <button id="toggle-play" class="icon-button play-button" type="button" aria-label="播放" title="播放 / 暂停（空格）"></button>
+        <button id="next" class="icon-button" type="button" aria-label="下一集" title="下一集"></button>
+        <span id="time" class="time">00:00 / 00:00</span>
+      </div>
+      <div class="right-buttons">
+        <button id="danmaku-button" type="button" aria-haspopup="true" aria-expanded="false">弹幕</button>
+        <button id="quality" class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">画质</button>
+        <button id="episode" class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">选集</button>
+        <button id="rate" class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">倍速</button>
+        <button id="volume-button" class="icon-button menu-trigger" type="button" aria-label="音量" aria-haspopup="true" aria-expanded="false"></button>
+        <button id="settings" class="icon-button menu-trigger" type="button" aria-label="播放设置" aria-haspopup="true" aria-expanded="false"></button>
+        <button id="pip" class="icon-button" type="button" aria-label="画中画" title="画中画"></button>
+        <button id="window-fullscreen" class="icon-button" type="button" aria-label="窗口全屏" title="窗口全屏"></button>
+        <button id="fullscreen" class="icon-button" type="button" aria-label="全屏" title="全屏（F）"></button>
+      </div>
+    </div>
+    <div id="player-menu" class="player-menu" hidden></div>
+
+  </div>
+</div>

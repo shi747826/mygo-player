@@ -1,0 +1,15 @@
+# Third-party notices
+
+MyGo Player corresponding application source: https://github.com/shi747826/mygo-player .
+
+MyGo Player is an independent desktop client. The host integrates source functionality through separately installed executable plugins.
+
+- MyGo Music, copyright egoist and mygo-music contributors, GNU AGPL v3. Source: https://github.com/egoist/mygo-music . MyGo Player adapts the UI palette, source selector, sidebar/search layout, icon-button feedback and navigation history from `internal/app/ui_kit.go`, `ui_main.go`, and `ui_suggest.go`; changes adapt those components to video sources and the independent executable source protocol. Modified files identify the derivation. License texts: LICENSE and licenses/mygo-music-AGPL-3.0.txt. MyGo Player is distributed under AGPL-3.0-only; the repository retains the corresponding application source.
+
+- MyGo v0.8.3, copyright 2026 MyGo contributors, MIT. Source: https://github.com/egoist/mygo/tree/v0.8.3 . License: licenses/MyGo-MIT.txt . The app uses native UI with a system WebView for HTML5 video; it does not depend on the unreleased native-video component.
+- Source plugins are maintained and distributed separately. MyGo Player 0.3 does not bundle source executables or their service SDKs. Plugin authors and distributors must retain the licenses, copyright notices and source obligations applicable to their own implementation and dependencies. Installing a plugin does not replace the host dependency notices below.
+- purego (Apache-2.0), go-text/typesetting (BSD-3-Clause and component notices), golang.org/x/image, x/net, x/text (BSD-3-Clause) are transitive Go dependencies. Exact versions are in go.mod and go.sum. License texts are retained under licenses/.
+- Optional bundled FFmpeg 9.0, macOS arm64, extracted from imageio-ffmpeg 0.8.1 (`imageio_ffmpeg-0.8.1-py3-none-macosx_12_0_arm64.whl`, SHA-256 `5636d691e36e5274b13fe38182b1f627b2e35dcecc63944012c2470f9484fc45`). Provenance: https://pypi.org/project/imageio-ffmpeg/0.8.1/ and https://github.com/imageio/imageio-ffmpeg/releases/tag/v0.8.1 . FFmpeg is run as a separate executable; this build enables GPL components and does not enable the nonfree configuration flag. See licenses/FFmpeg-COPYING.GPLv2.txt and licenses/FFmpeg-build.txt for the build configuration and corresponding upstream source links. The build script bundles it only when MYGO_PLAYER_BUNDLE_FFMPEG is set. The older eugeneware binary used during initial development is not bundled. Further redistribution requires satisfying FFmpeg and its enabled libraries' source and notice obligations.
+
+
+Drama names, cover images and audiovisual content obtained during use belong to their respective owners and are not bundled. Device profiles, playback URLs, content keys and viewing history are not included in the source or application package.

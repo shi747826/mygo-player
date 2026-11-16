@@ -1,0 +1,53 @@
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}video{display:block;width:100%;height:100%;object-fit:contain;background:#000}button,input{-webkit-tap-highlight-color:transparent}button{font:inherit;color:#fff;cursor:pointer;border:0;background:none;white-space:nowrap}button:disabled{color:#777;cursor:default}button:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:3px}button:hover:not(:disabled){color:#fff;background:rgba(255,255,255,.13)}[hidden]{display:none!important}#hint{position:absolute;top:50%;left:12%;right:12%;text-align:center;pointer-events:none;text-shadow:0 1px 5px #000}#hint:empty{display:none}.player-ui{position:absolute;inset:0;pointer-events:none;color:#fff}.top-shade{position:absolute;top:0;left:0;right:0;padding:22px 26px 44px;background:linear-gradient(180deg,rgba(0,0,0,.72),transparent);transition:transform .18s,visibility .18s}.player-title{font-size:17px;font-weight:600;line-height:1.5;max-width:calc(100% - 110px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 4px #000}.episode-label{font-size:12px;margin-top:3px;color:rgba(255,255,255,.75)}.bottom-shade{position:absolute;bottom:0;left:0;right:0;padding:42px 24px 12px;background:linear-gradient(0deg,rgba(0,0,0,.88),rgba(0,0,0,.48) 58%,transparent);pointer-events:auto;transition:transform .18s,visibility .18s}.button-row,.left-buttons,.right-buttons{display:flex;align-items:center}.button-row{justify-content:space-between;gap:12px;min-height:38px}.left-buttons{gap:9px;min-width:0}.right-buttons{gap:8px}.button-row button{height:34px;padding:0 9px;border-radius:5px;font-weight:500}.button-row .icon-button{display:flex;align-items:center;justify-content:center;width:30px;padding:5px;flex-shrink:0}.icon-button svg{display:block;width:22px;height:22px;fill:currentColor}.play-button svg{width:25px;height:25px}.time{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;margin-left:5px;text-shadow:0 1px 3px #000}.seek-wrap{position:relative;height:18px;display:flex;align-items:center;margin:0 0 3px}.seek{-webkit-appearance:none;appearance:none;display:block;width:100%;height:3px;border-radius:3px;margin:0;background:linear-gradient(to right,#00a1d6 var(--progress,0%),rgba(255,255,255,.3) var(--progress,0%));cursor:pointer;outline-offset:5px}.seek::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 4px #0004}.seek::-moz-range-thumb{border:0;width:10px;height:10px;border-radius:50%;background:#fff}.seek-wrap:hover .seek{height:5px}.seek-preview{position:absolute;bottom:22px;left:0;font-size:12px;background:rgba(18,18,18,.92);border-radius:5px;padding:6px 9px;pointer-events:none}.player-menu{position:absolute;right:24px;bottom:72px;width:216px;max-width:calc(100vw - 32px);max-height:min(340px,65vh);overflow:auto;background:rgba(24,24,27,.96);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:8px;box-shadow:0 8px 30px #0006;pointer-events:auto}.menu-title{padding:9px 10px;color:#aaa;font-size:12px}.menu-item{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:5px}.menu-item[aria-checked=true]{color:#0a84ff;font-weight:600}.episode-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}.episode-grid .menu-item{text-align:center;padding:10px 2px}.volume-control{width:100%;accent-color:white;margin:18px 0}.player-ui.is-idle .top-shade{transform:translateY(-100%);visibility:hidden}.player-ui.is-idle .bottom-shade{transform:translateY(100%);visibility:hidden}body.player-idle{cursor:none}@media(max-width:660px){.top-shade{padding:16px 16px 36px}.player-title{font-size:15px}.bottom-shade{padding:32px 12px 8px}.button-row{gap:4px}.left-buttons{gap:2px}.right-buttons{gap:0}.button-row button{padding:0 6px;font-size:12px}.button-row .icon-button{width:28px}.time{font-size:11px;margin-left:2px}.player-menu{right:12px;bottom:66px}}@media(max-width:460px){.button-row{flex-wrap:wrap;gap:0}.left-buttons{flex:1}.right-buttons{margin-left:auto}.time{font-size:10px}.button-row .icon-button{width:26px}.button-row button{height:30px;padding:0 5px}.player-menu{bottom:98px}.top-shade{padding-left:12px}.player-title{font-size:14px}}@media(prefers-reduced-motion:reduce){.top-shade,.bottom-shade{transition:none}}
+#danmaku-layer{position:absolute;top:56px;bottom:88px;left:0;right:0;overflow:hidden;pointer-events:none;z-index:1;contain:strict}
+#danmaku-layer.danmaku-off{display:none}
+.danmaku-item{position:absolute;white-space:nowrap;font-size:22px;font-weight:600;line-height:1.3;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000;will-change:transform;user-select:none}
+@media(max-width:660px){.danmaku-item{font-size:17px}#danmaku-layer{top:44px;bottom:76px}}
+.danmaku-panel{position:absolute;right:16px;bottom:72px;width:320px;padding:16px 18px 14px;border-radius:14px;background:rgba(24,24,26,.95);box-shadow:0 12px 32px rgba(0,0,0,.5);pointer-events:auto;z-index:5;color:#fff;font-size:13px}
+.dm-section{margin:2px 0 8px;color:#c9c9cf;font-size:13px}
+.dm-section+.dm-positions,.dm-positions+.dm-section,.dm-sizes+.dm-section,.dm-speeds+.dm-section{margin-top:14px}
+.dm-positions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.dm-positions button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border-radius:10px;color:#d6d6db;background:rgba(255,255,255,.06);font-size:12px}
+.dm-positions button[aria-pressed="true"]{color:#0a84ff}
+.dm-shape{display:block;width:34px;height:22px;border-radius:4px;background:repeating-linear-gradient(180deg,#8d8d94 0 3px,transparent 3px 6px);opacity:.85}
+.dm-shape-mega{height:22px}.dm-shape-full{height:18px}.dm-shape-half{height:11px}.dm-shape-top{height:7px}
+.dm-positions button[aria-pressed="true"] .dm-shape{background:repeating-linear-gradient(180deg,#0a84ff 0 3px,transparent 3px 6px)}
+.dm-sizes,.dm-speeds{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.dm-sizes button,.dm-speeds button{padding:8px 0;border-radius:10px;color:#d6d6db;background:rgba(255,255,255,.06)}
+.dm-sizes button[aria-pressed="true"],.dm-speeds button[aria-pressed="true"]{color:#0a84ff}
+.dm-opacity{display:flex;align-items:center;gap:10px}
+.dm-opacity input{flex:1;height:3px;border-radius:2px;-webkit-appearance:none;appearance:none;background:linear-gradient(to right,#0a84ff var(--dm-progress,80%),rgba(255,255,255,.25) var(--dm-progress,80%));outline:none;cursor:pointer}
+.dm-opacity input::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#0a84ff;border:0;margin-top:0}
+.dm-opacity input::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#0a84ff}
+.dm-opacity span{width:44px;text-align:right;color:#e6e6ea}
+.dm-switch{display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);color:#e6e6ea}
+.dm-switch input{appearance:none;width:42px;height:24px;border-radius:12px;background:rgba(255,255,255,.2);position:relative;border:0;cursor:pointer}
+.dm-switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .16s}
+.dm-switch input:checked{background:#0a84ff}
+.dm-switch input:checked::after{transform:translateX(18px)}
+#danmaku-layer.dm-opacity-low{opacity:.35}
+#danmaku-layer[data-size="large"] .danmaku-item{font-size:26px}
+#danmaku-layer[data-size="small"] .danmaku-item{font-size:18px}
+#danmaku-layer[data-pos="mega"]{top:52px;bottom:24px}
+#danmaku-layer[data-pos="half"]{bottom:52%}
+#danmaku-layer[data-pos="top"]{bottom:74%}
+@media(max-width:660px){.danmaku-panel{right:10px;bottom:66px;width:270px}}
+/* 悬停即展开菜单，按钮本身不再变色，避免看起来像被选中。 */
+.button-row button.menu-trigger:hover:not(:disabled){background:none;color:#fff}
+.button-row button.menu-trigger[aria-expanded="true"]{background:none;color:#fff}
+/* 音量：悬停展开竖向滑杆，点图标静音。 */
+.volume-panel{position:absolute;right:22px;bottom:72px;width:58px;padding:12px 6px 10px;border-radius:12px;background:rgba(24,24,27,.96);border:1px solid rgba(255,255,255,.12);box-shadow:0 8px 30px #0006;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto;z-index:6}
+.volume-value{font-size:13px;color:#fff;line-height:1}
+.volume-track{position:relative;width:16px;height:120px}
+.volume-slider{position:absolute;left:50%;top:50%;width:120px;height:16px;margin:0;transform:translate(-50%,-50%) rotate(-90deg);-webkit-appearance:none;appearance:none;background:transparent;outline:none;cursor:pointer}
+.volume-slider::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:linear-gradient(to right,#0a84ff var(--vol,80%),rgba(255,255,255,.30) var(--vol,80%))}
+.volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4.5px;border-radius:50%;background:#0a84ff;border:0}
+@media(max-width:660px){.volume-panel{right:14px;bottom:66px}.volume-track{height:96px}.volume-slider{width:96px}}
+/* 选中项悬停时仍是蓝色，不要被通用 hover 规则刷白。 */
+.menu-item[aria-checked=true]:hover:not(:disabled){color:#0a84ff}
+.dm-positions button[aria-pressed="true"]:hover,.dm-sizes button[aria-pressed="true"]:hover,.dm-speeds button[aria-pressed="true"]:hover{color:#0a84ff}
+/* 滚轮调音量时的居中提示，样式对齐 B 站：白色卡片 + 喇叭 + 百分比。 */
+.volume-toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:10px;padding:14px 22px;border-radius:10px;background:rgba(255,255,255,.94);color:#111;font-size:22px;font-weight:600;pointer-events:none;opacity:0;transition:opacity .15s ease;z-index:7}
+.volume-toast.show{opacity:1}
+.volume-toast svg{width:26px;height:26px;fill:#111}
+@media(max-width:660px){.volume-toast{font-size:18px;padding:10px 16px}.volume-toast svg{width:22px;height:22px}}
