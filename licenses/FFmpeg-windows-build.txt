@@ -1,0 +1,17 @@
+Windows x64 FFmpeg distribution used for MyGo Player v0.3.1
+
+Binary: imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v9.0.2.exe
+Container: imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl
+Container SHA-256: f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b
+Container metadata: https://pypi.org/project/imageio-ffmpeg/0.8.1/
+Upstream retrieval script: https://github.com/imageio/imageio-ffmpeg/blob/v0.8.1/tools/download_ffmpeg.py
+FFmpeg source: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+FFmpeg source repository: https://git.ffmpeg.org/ffmpeg.git
+
+Binary configuration strings include --enable-gpl --enable-version3
+--enable-static. The --enable-nonfree flag is absent. The binary is
+redistributed without modification as a separate executable, ffmpeg.exe.
+See FFmpeg-COPYING.GPLv3.txt and FFmpeg-LICENSE.txt for license terms.
+MicrosoftEdgeWebview2Setup.exe is a separate Microsoft bootstrapper downloaded
+from https://go.microsoft.com/fwlink/p/?LinkId=2124703 . Installing WebView2
+requires network access and is subject to Microsoft's runtime license.

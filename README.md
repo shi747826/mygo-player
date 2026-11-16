@@ -43,7 +43,7 @@ internal/webplayer/   共用系统 WebView 与视频控制层
 
 ## 运行与构建
 
-需要 Go 1.27.3+，无需 Node。当前交付 macOS Apple Silicon，其他平台未做原生运行验证。
+需要 Go 1.27.3+，无需 Node。提供 macOS Apple Silicon 和 Windows x64 发布包；macOS 已做原生运行验证，Windows 目前仅完成交叉编译和打包检查。
 
 ```sh
 go mod download
@@ -60,6 +60,20 @@ go vet ./...
 './build/MyGo Player.app/Contents/MacOS/mygo-player' \
   -data /tmp/mygo-player-smoke -source my-source -smoke -smoke-next
 ```
+
+### Windows x64
+
+Release 提供便携 ZIP 和 NSIS 安装程序。Windows 10/11 x64 需要 Microsoft Edge WebView2 Runtime；包内附有官方联网安装引导程序及 FFmpeg。便携 ZIP 完整解压后运行 `mygo-player.exe`；安装程序可创建快捷方式，并提示安装或修复 WebView2。Windows 程序未做代码签名，也尚未进行原生桌面启动、播放及安装/卸载验证。插件需有独立的 Windows amd64 Release 资产。
+
+可在 macOS/Linux 的 shell 或 Windows 的 Git Bash 中构建，需要 Python 3；生成安装程序还需 NSIS：
+
+```sh
+WEBVIEW2_BOOTSTRAPPER=/absolute/path/to/MicrosoftEdgeWebview2Setup.exe \
+MYGO_PLAYER_BUNDLE_FFMPEG=/absolute/path/to/windows-x64/ffmpeg.exe \
+sh scripts/build-windows.sh
+```
+
+WebView2 引导程序来自 <https://go.microsoft.com/fwlink/p/?LinkId=2124703>。请使用 Windows x64 FFmpeg，来源与许可证见第三方声明。Windows GitHub 下载器使用 `HTTP_PROXY` / `HTTPS_PROXY` 并遵守 `NO_PROXY`；当前未读取 Windows 系统代理。
 
 ## 数据与升级
 

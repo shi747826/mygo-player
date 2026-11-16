@@ -1,5 +1,13 @@
 # MyGo Player 验证记录
 
+## 0.3.1 Windows x64 打包
+
+- 使用 Go 1.27.3、`GOOS=windows GOARCH=amd64 CGO_ENABLED=0`、`mygo_noinspector` 和 `-H=windowsgui` 完成交叉编译。
+- `scripts/build-windows.sh` 生成便携 ZIP 与 NSIS 安装程序，携带 FFmpeg 9.0.2、官方 WebView2 联网安装引导程序、使用说明及许可文件。
+- Windows 主程序和 FFmpeg 的 PE Machine 为 `0x8664`；WebView2 引导程序通过 PE 格式检查。便携 ZIP 的 CRC 和必需文件检查通过。NSIS 安装程序编译成功，版本使用应用清单中的 0.3.1。
+- FFmpeg 依赖 wheel 的 SHA-256 为 `f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b`，与 PyPI 元数据一致；WebView2 引导程序来自 Microsoft 官方下载链接。
+- Windows 包对应的实际程序、WebView2 播放、插件启动、安装/卸载和系统代理均未在真实 Windows 桌面测试。Windows 下载器目前只读取环境代理，不读取 Windows 系统代理；程序未做 Windows 代码签名。
+
 ## 0.3.1 GitHub 安装修复
 
 - 修复从 Finder 启动时未读取 macOS 系统代理的问题；支持 HTTP/HTTPS/SOCKS，环境变量代理优先，并遵守 NO_PROXY。
