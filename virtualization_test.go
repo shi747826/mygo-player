@@ -46,7 +46,7 @@ func TestGridRendersTailAtBottom(t *testing.T) {
 	a.listScroll.Y = a.gridContent
 	tt := ui.NewTester(a.view, 1280, 820)
 	if !tt.HasText("剧集660") {
-		t.Fatalf("tail item not rendered at bottom")
+		t.Fatalf("tail item not rendered at bottom: scroll=%v content=%v width=%v cols=%d rendered=%d", a.listScroll.Y, a.gridContent, a.gridWidth, a.layoutCols, a.renderedCards)
 	}
 }
 

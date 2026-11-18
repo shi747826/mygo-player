@@ -288,7 +288,8 @@ func (a *app) masonryGrid(c *ui.Context) {
 	if first < 0 {
 		first = 0
 	}
-	visible := int(viewport/rowH) + 2
+	// Include a partial viewport row as well as overscan above and below.
+	visible := int(viewport/rowH) + 3
 	last := first + visible
 	if last > rows {
 		last = rows
@@ -326,10 +327,11 @@ func (a *app) masonryGrid(c *ui.Context) {
 	}
 }
 
-// cardHeight 估算卡片高度。标题框高度固定为 40，因此这里不再按标题长度分档。
+// cardHeight matches the fixed cover, single-line title and action row.
+// Progress belongs to the cover so every grid row keeps the same height.
 func cardHeight(colWidth float32) float32 {
 	cover := colWidth / gridAspect
-	return cover + 102
+	return cover + 62
 }
 func (a *app) seriesCard(c *ui.Context, s catalog.Series) {
 	ui.Column(c.Key(s.ID)).Padding(0).Gap(8).MinWidth(0).Children(func() {
@@ -344,17 +346,19 @@ func (a *app) seriesCard(c *ui.Context, s catalog.Series) {
 			if hovered {
 				ui.Box(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).Radius(8).Background(ui.RGBA(0, 0, 0, .18)).IgnoreInput(true).Center().Children(func() { symbol(c, "play.circle.fill", 44, ui.Hex("#ffffff")) })
 			}
-		})
-		ui.Column(c).Gap(4).Children(func() {
-			ui.Text(c, s.Title).FontSize(14).FontWeight(500).Wrap().MaxLines(2).Height(40)
-			meta := fmt.Sprintf("%d 集", s.Episodes)
-			if s.Episodes == 0 {
-				meta = "短剧"
+			if s.Episodes > 0 {
+				ui.Box(c).Label("总集数").Absolute().Top(8).Left(8).Padding(3, 6).Radius(4).Background(ui.RGBA(0, 0, 0, .65)).IgnoreInput(true).Children(func() {
+					ui.Text(c, fmt.Sprintf("%d 集", s.Episodes)).FontSize(11).FontWeight(500).TextColor(ui.Hex("#ffffff")).SingleLine()
+				})
 			}
 			if p, ok := a.library.History[s.ID]; ok {
-				meta = fmt.Sprintf("看到第 %d 集 · %s", p.Episode.Number, clock(p.Position))
+				ui.Box(c).Label("观看进度").Absolute().Bottom(8).Left(8).Right(8).Padding(4, 6).Radius(4).Background(ui.RGBA(0, 0, 0, .65)).IgnoreInput(true).Children(func() {
+					ui.Text(c, fmt.Sprintf("看到第 %d 集 · %s", p.Episode.Number, clock(p.Position))).FontSize(11).TextColor(ui.Hex("#ffffff")).FillWidth().MinWidth(0).SingleLine()
+				})
 			}
-			ui.Text(c, meta).FontSize(12).TextColor(appleMuted).Height(16).MaxLines(1)
+		})
+		ui.Column(c).FillWidth().MinWidth(0).Gap(4).Children(func() {
+			ui.Text(c, s.Title).FontSize(14).FontWeight(500).FillWidth().MinWidth(0).SingleLine().Height(20)
 			ui.Row(c).FillWidth().Height(30).Gap(6).AlignItems(ui.Center).Children(func() {
 				button(c, "播放").Height(28).PaddingX(10).OnClick(func() { a.selectSeries(s, true) })
 				button(c, "选集").Height(28).PaddingX(10).OnClick(func() { a.selectSeries(s, false) })
