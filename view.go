@@ -63,7 +63,7 @@ func (a *app) view(c *ui.Context) {
 		return
 	}
 	ui.Row(c).Fill().Gap(0).Background(palette.Background).Children(func() {
-		if !a.portrait {
+		if !a.portrait && !a.sidebarCollapsed {
 			a.sidebar(c)
 		}
 		ui.Column(c).Grow(1).FillHeight().MinWidth(0).Children(func() {

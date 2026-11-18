@@ -125,7 +125,7 @@ func (a *app) shellShortcuts(c *ui.Context) {
 		}
 		a.loadPage(a.page, false)
 	})
-	c.OnShortcut(ui.Cmd, ui.KeyF, func() { a.searchBox.Focus(c) })
+	c.OnShortcut(ui.Cmd, ui.KeyF, func() { a.sidebarCollapsed = false; a.searchBox.Focus(c) })
 	if !c.Focused(a.searchBox) {
 		c.OnShortcut(0, ui.KeySpace, func() {
 			if a.player != nil {

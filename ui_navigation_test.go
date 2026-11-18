@@ -78,11 +78,14 @@ func TestSearchShortcutFocusesSidebar(t *testing.T) {
 		for _, label := range []string{"选择来源", "搜索短剧"} {
 			r, ok := tt.Find(label)
 			if !ok || r.X < 0 || r.X+r.W > float32(width) {
-				t.Fatalf("collapsed header control %q outside %dpx window: %+v", label, width, r)
+				t.Fatalf("sidebar control %q outside %dpx window: %+v", label, width, r)
 			}
 		}
+		if err := tt.Click("收起侧栏"); err != nil {
+			t.Fatal(err)
+		}
 		tt.Key(ui.Cmd, ui.KeyF)
-		if !tt.Focused("搜索短剧") {
+		if a.sidebarCollapsed || !tt.Focused("搜索短剧") {
 			t.Fatal("search shortcut did not focus the sidebar field")
 		}
 	}
@@ -101,11 +104,43 @@ func TestIntegratedWindowControls(t *testing.T) {
 			if !ok || r.X < bar.Left || r.X+r.W > float32(width)-bar.Right || r.Y < 0 || r.Y+r.H > max(float32(40), bar.Height) {
 				t.Fatalf("source overlaps native controls: bar=%+v width=%d source=%+v", bar, width, r)
 			}
+			toggle, exists := tt.Find("收起侧栏")
+			if !exists || toggle.X < r.X+r.W || toggle.X+toggle.W > float32(width)-bar.Right {
+				t.Fatalf("sidebar toggle overlaps source/native controls: %+v", toggle)
+			}
+			if r.W > 100 {
+				t.Fatalf("source switcher too wide: %+v", r)
+			}
+			if bar.Left > 0 && toggle.X+toggle.W > musicSidebarWidth {
+				t.Fatalf("toggle extends beyond sidebar: %+v", toggle)
+			}
 			if bar.Left > 0 && r.X+r.W > musicSidebarWidth {
 				t.Fatalf("source extends past sidebar: %+v", r)
 			}
 			if err := tt.Click("收起"); err != nil {
 				t.Fatalf("detail close covered: %v", err)
+			}
+			if tt.HasText("资料库") {
+				t.Fatal("redundant library heading remains")
+			}
+			nav, found := tt.Find("收藏")
+			if !found || nav.Y >= 105 {
+				t.Fatalf("navigation was not moved up: %+v", nav)
+			}
+			if err := tt.Click("收起侧栏"); err != nil {
+				t.Fatal(err)
+			}
+			if !a.sidebarCollapsed {
+				t.Fatal("sidebar did not collapse")
+			}
+			if _, visible := tt.Find("搜索短剧"); visible {
+				t.Fatal("collapsed sidebar search still visible")
+			}
+			if err := tt.Click("展开侧栏"); err != nil {
+				t.Fatal(err)
+			}
+			if a.sidebarCollapsed {
+				t.Fatal("sidebar did not expand")
 			}
 			if err := tt.Click("选择来源"); err != nil {
 				t.Fatal(err)

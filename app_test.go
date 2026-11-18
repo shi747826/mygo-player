@@ -206,7 +206,7 @@ func TestSourceNavigationWithoutApplicationChrome(t *testing.T) {
 				t.Fatalf("%s unexpected visibility for %q", source, label)
 			}
 		}
-		for _, label := range []string{"MyGo Player", "收起侧栏", "展开侧栏", "前进", "刷新"} {
+		for _, label := range []string{"MyGo Player", "资料库", "前进", "刷新"} {
 			if tt.HasText(label) {
 				t.Fatalf("obsolete application chrome %q is visible", label)
 			}

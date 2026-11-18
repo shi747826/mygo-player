@@ -60,7 +60,7 @@ func (a *app) targetPageSize() int {
 		if width <= 0 && a.win != nil {
 			w, _ := a.win.Size()
 			width = float32(w)
-			if !a.portrait {
+			if !a.portrait && !a.sidebarCollapsed {
 				width -= musicSidebarWidth
 			}
 			width -= 56

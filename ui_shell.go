@@ -85,7 +85,7 @@ func (a *app) sourceDisplayName() string {
 	return "选择来源"
 }
 func (a *app) sidebarSearch(c *ui.Context) {
-	field := ui.Row(c).Height(32).FillWidth().Radius(9).AlignItems(ui.Stretch).Margin(0, 0, 14, 0)
+	field := ui.Row(c).Height(32).FillWidth().Radius(9).AlignItems(ui.Stretch).Margin(0, 0, 6, 0)
 	if c.Focused(a.searchBox) {
 		field.Background(appleSurface).Border(1, appleBlue.Alpha(.6)).Shadow(0, 0, 0, 3, appleBlue.Alpha(.15))
 	} else {
@@ -108,12 +108,11 @@ func (a *app) sidebarSearch(c *ui.Context) {
 }
 func (a *app) musicSidebar(c *ui.Context) {
 	ui.Column(c).Width(musicSidebarWidth).FillHeight().Padding(14).Gap(4).Background(appleCanvas).Children(func() {
-		ui.Box(c).Height(max(float32(48), c.TitleBar().Height+8) - 14).Shrink(0)
+		ui.Box(c).Height(max(float32(44), c.TitleBar().Height+4) - 14).Shrink(0)
 		if a.sourceHas("search") {
 			a.sidebarSearch(c)
 		}
 		ui.Scroll(c.Key("sidebar-nav")).Grow(1).FillWidth().Gap(4).Children(func() {
-			ui.Text(c, "资料库").FontSize(11).FontWeight(600).TextColor(appleMuted).Padding(8, 10, 4, 10)
 			if a.pluginManager != nil {
 				for _, m := range a.pluginManager.Manifests() {
 					if m.ID == a.source && a.pluginManager.Enabled(m.ID) {
@@ -160,11 +159,17 @@ func (a *app) windowControls(c *ui.Context) {
 		if bar.Right > 0 && bar.Left == 0 {
 			ui.Spacer(c)
 		}
-		width := float32(144)
+		width := float32(100)
 		if bar.Left > 0 {
-			width = max(float32(96), musicSidebarWidth-bar.Left-20)
+			width = min(width, max(float32(64), musicSidebarWidth-bar.Left-48))
 		}
 		ui.Box(c).Width(width).Children(func() { a.sourceSwitcher(c) })
+		ui.Box(c).Width(4)
+		label := "收起侧栏"
+		if a.sidebarCollapsed {
+			label = "展开侧栏"
+		}
+		shellIconButton(c.Key("sidebar-toggle"), "sidebar.left", label).Size(28, 28).OnClick(func() { a.sidebarCollapsed = !a.sidebarCollapsed })
 	})
 }
 
