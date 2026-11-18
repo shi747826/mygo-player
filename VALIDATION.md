@@ -1,5 +1,23 @@
 # MyGo Player 验证记录
 
+## 0.1.0 Android 手机版
+
+环境：Apple Silicon macOS、Go 1.27.3、MyGo CLI 0.10.0、JDK 17.0.21、Android SDK 36（build-tools 36.0.0、NDK 28.2.13676358），模拟器为 Android 15 / API 35 arm64。
+
+构建与检查：
+
+- `go test -race ./...` 与 `go vet ./...` 通过（安卓模块）；原生模块 `mygo native check` 通过。
+- Gradle 构建产出 `mygo-player-0.1.0.apk`/`.aab`；`apksigner verify` 通过（v2 签名），ZIP 完整性、`arm64-v8a` 库、`versionName=0.1.0`、`minSdk=26` 均校验。
+- APK 清单包含由原生模块合并的 `networkSecurityConfig`：基础禁止明文，仅 `localhost` 与 `127.0.0.1` 允许；`INTERNET` 权限存在。
+
+模拟器实测：
+
+- 首次启动读取来源清单，发现页双列瀑布流加载真实目录；封面经宿主代理从 HEIF 转成 JPEG 后正常显示，集数角标在封面左上角，标题单行省略。
+- 点封面进入竖屏播放页，`<video>` 播放解密后的 H.265 MP4：进度从 0:22 前进到 5:03 的时间轴上，切到第 2 集后重新从头播放。
+- 选集面板按 30 集分段（1–30、31–60…），当前集高亮，打开时定位当前段。
+- 播放页的受保护流在 Go 内解密：单元测试与真实流（23 MB）离线解密后由 FFmpeg 解码抽帧验证；需要独立音轨或子样本加密的流会返回明确的不支持提示。
+- 未验证：真实手机、Android 平板、横屏旋转、后台恢复、Play 上架签名、Windows/Linux 上的移动端构建。
+
 ## 0.3.8 播放器禁用网页文本选择
 
 - 播放器统一应用 `-webkit-user-select: none`、`user-select: none` 和 `-webkit-user-drag: none`，剧名、集数、时间及菜单文字不再被长按拖动选中。

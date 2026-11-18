@@ -26,3 +26,8 @@ __pycache__/
 account.json
 account-profile.json
 preferences.json
+
+# Android build staging and design-test browser profiles
+android/.mygo/
+android/dist/
+design/android/build/

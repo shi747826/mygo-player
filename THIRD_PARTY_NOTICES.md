@@ -13,4 +13,6 @@ MyGo Player is an independent desktop client. The host integrates source functio
 
 - Windows x64 packages bundle FFmpeg 9.0.2 from imageio-ffmpeg 0.8.1 (`imageio_ffmpeg-0.8.1-py3-none-win_amd64.whl`, SHA-256 `f27ca4cb85e2d4946deedbce1a81245dfd942a2bcf94b53676fb3956aa95bf1b`). This binary enables GPL and version3 components, with no nonfree configuration flag. See licenses/FFmpeg-COPYING.GPLv3.txt and licenses/FFmpeg-windows-build.txt for terms and provenance. The official Microsoft WebView2 bootstrapper is included separately; the runtime is installed from Microsoft under its own terms.
 
+- The Android app embeds hls.js 1.7.4, copyright Dailymotion and hls.js contributors, Apache-2.0. Source: https://github.com/video-dev/hls.js/tree/v1.7.4 . The vendored copy is verified against the npm package's SHA-512 integrity by `android/scripts/vendor-hls.py`; its license is `android/frontend/vendor/HLS-LICENSE.txt`. Android uses MyGo v0.10.0 (MIT) as the mobile host.
+
 Drama names, cover images and audiovisual content obtained during use belong to their respective owners and are not bundled. Device profiles, playback URLs, content keys and viewing history are not included in the source or application package.

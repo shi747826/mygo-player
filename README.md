@@ -79,6 +79,25 @@ Windows 图标使用与 macOS 相同的应用图案，`packaging/AppIcon.ico` �
 
 WebView2 引导程序来自 <https://go.microsoft.com/fwlink/p/?LinkId=2124703>。请使用 Windows x64 FFmpeg，来源与许可证见第三方声明。Windows GitHub 下载器使用 `HTTP_PROXY` / `HTTPS_PROXY` 并遵守 `NO_PROXY`；当前未读取 Windows 系统代理。
 
+## Android
+
+`android/` 是独立的 Go 模块（MyGo 0.10），只为 Android 构建；桌面版继续使用当前 MyGo 版本与原生 UI，两者互不影响。手机界面是内嵌网页（`android/frontend`）：底部三个标签「发现 / 追剧 / 我的」，发现页双列竖版封面瀑布流，点封面进入竖屏播放页，上下滑动或按钮切集，选集从底部面板按 30 集一段打开；播放页退出即保存进度。
+
+Android 不能执行下载的可执行文件插件，因此手机版在构建时把来源编译进 APK：宿主只提供中性的 `android/sourceapi` 注册接口和 `https://mygo.localhost` 页面，来源仓库各自提供 `mobile` 适配包。接入哪些来源由构建参数决定，仓库本身不包含具体来源实现或名称：
+
+```sh
+# Android SDK、NDK、JDK 17 与 MyGo 0.10 CLI；也可用 MYGO_PLAYER_ANDROID_ENV 指定
+. ../.tools/android-tools-setup.env
+export MYGO_PLAYER_ANDROID_SOURCES=/absolute/path/sources.json
+sh scripts/build-android.sh
+```
+
+`sources.json` 是独立来源目录的数组，每项为 `{"directory": "/path/to/source-repo"}`（可选 `import` 指定适配包）。脚本在 `build/android-project-*` 临时目录生成注册文件、替换为本机模块路径并调用 `mygo build`，最终把 APK、AAB、构建信息与校验和复制到桌面打包目录；中间目录和生成文件不进入仓库。
+
+手机端的媒体：`<video>` 优先，HLS 回退到内置的 hls.js。来源的本地媒体服务在 `127.0.0.1` 上提供，应用只对 `https://mygo.localhost` 页面放宽混合内容，并通过网络安全配置仅允许 `localhost`/`127.0.0.1` 明文；封面经宿主代理获取，Android 端可把 HEIF 封面转成 JPEG。需要在 FFmpeg 上完成的受保护多轨媒体，若来源能在 Go 内完成解密（例如单轨 cenc MP4）则可直接播放，其余情况会明确提示不支持。
+
+Android 包使用调试密钥签名，未做 Play 商店签名、上架或真机验证以外的兼容性声明。
+
 ## 数据与升级
 
 默认根目录为 `os.UserConfigDir()/mygo-player`，macOS 为 `~/Library/Application Support/mygo-player`。`-data` 可指定独立目录。

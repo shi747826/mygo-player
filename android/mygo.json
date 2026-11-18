@@ -1,0 +1,15 @@
+{
+  "name": "MyGo Player",
+  "slug": "mygo-player",
+  "identifier": "dev.local.mygoplayer.android",
+  "version": "0.1.0",
+  "license": "MIT",
+  "main": ".",
+  "out": "dist",
+  "android": {
+    "minSdk": 26,
+    "versionCode": 1,
+    "permissions": ["ACCESS_NETWORK_STATE"],
+    "splash": "#f5f3f0"
+  }
+}
