@@ -62,8 +62,12 @@ func (a *app) showRoute(r pageRoute) {
 	a.loadPage(r.Page, false)
 }
 func (a *app) goBack() {
-	if a.fullscreenVideo || a.windowFullscreen {
+	if a.fullscreenVideo {
 		a.exitFullscreen()
+		return
+	}
+	if a.windowFullscreen {
+		a.windowFullscreen = false
 		return
 	}
 	if a.showPlayer {

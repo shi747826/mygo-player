@@ -90,6 +90,7 @@ func main() {
 	app.smokeNext = *smokeNext
 	mygo.App.WhenReady(func() {
 		app.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGo Player", TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 40, TrafficLightPosition: &mygo.Point{X: 14, Y: 12}, Width: 1280, Height: 820, MinWidth: 900, MinHeight: 620, Content: ui.View(app.view)})
+		app.win.SetWindowButtonsTheme(mygo.ThemeLight)
 		app.win.OnClose(func(_ *mygo.CloseEvent) { app.shutdown() })
 		app.win.OnClosed(func() { mygo.App.Quit() })
 		mygo.App.Focus()

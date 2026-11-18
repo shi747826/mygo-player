@@ -67,7 +67,7 @@ const window=new Element(),requests=[],timers=new Map();let timerID=0;
 vm.runInNewContext(script,{document,window,fetch:(url,options)=>{requests.push({url,...JSON.parse(options.body)});return Promise.resolve({ok:true})},setInterval:()=>1,clearInterval(){},setTimeout:(fn,delay)=>{timers.set(++timerID,{fn,delay});return timerID},clearTimeout:id=>timers.delete(id),console});
 const action=()=>requests.filter(x=>x.url.startsWith('/action?')).at(-1);
 const cfg={title:'<img src=x onerror=alert(1)>',episode:4,episodes:[{id:'ep-4',number:4},{id:'ep-5',number:5}],currentEpisode:'ep-4',qualities:['1080P','720P'],quality:'1080P',canPrevious:true,canNext:true,fullscreen:true};
-assert.equal(window.playerConfigure(cfg),true);assert.equal(get('player-title').textContent,cfg.title);assert.equal(get('episode-label').textContent,'第 4 集');assert.equal(get('fullscreen').attrs['aria-label'],'退出全屏');
+assert.equal(window.playerConfigure(cfg),true);assert.equal(get('player-heading').hidden,false);assert.equal(get('player-title').textContent,cfg.title);assert.equal(get('episode-label').textContent,'第 4 集');assert.equal(get('fullscreen').attrs['aria-label'],'退出全屏');
 get('next').emit('click');assert.equal(action().name,'next');assert.equal(action().value,'');
 get('quality').emit('click');assert.equal(get('player-menu').hidden,false);get('player-menu').children[2].emit('click');assert.equal(action().name,'quality');assert.equal(action().value,'720P');
 get('episode').emit('click');
@@ -127,9 +127,9 @@ window.playerConfigure({fullscreen:false});const count=requests.length;key('Esca
 window.playerConfigure({fullscreen:true});get('fullscreen').emit('click');assert.equal(action().value,'false');
 key(' ');assert.equal(video.paused,true);assert.equal([...timers.values()].some(x=>x.delay===3000),false);
 // App-window fullscreen has its own action and never uses the OS-fullscreen action.
-window.playerConfigure({fullscreen:false,windowFullscreen:false});
+window.playerConfigure({fullscreen:false,windowFullscreen:false});assert.equal(get('player-heading').hidden,false);
 get('window-fullscreen').emit('click');assert.equal(action().name,'windowFullscreen');assert.equal(action().value,'true');
-window.playerConfigure({windowFullscreen:true});
+window.playerConfigure({windowFullscreen:true});assert.equal(get('player-heading').hidden,true);
 assert.equal(get('window-fullscreen').attrs['aria-label'],'退出窗口全屏');
 get('window-fullscreen').emit('click');assert.equal(action().value,'false');
 key('Escape');assert.equal(action().name,'windowFullscreen');assert.equal(action().value,'false');

@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"mygo-player/internal/catalog"
 )
@@ -58,7 +59,16 @@ func (a *app) view(c *ui.Context) {
 	c.SetTheme(palette)
 	a.shellShortcuts(c)
 	a.tick()
-	if (a.fullscreenVideo || a.windowFullscreen) && (a.player != nil || a.preparing || a.playMessage != "") {
+	playbackLayout := (a.fullscreenVideo || a.windowFullscreen) && (a.player != nil || a.preparing || a.playMessage != "")
+	if a.win != nil && a.windowButtonsDark != playbackLayout {
+		theme := mygo.ThemeLight
+		if playbackLayout {
+			theme = mygo.ThemeDark
+		}
+		a.win.SetWindowButtonsTheme(theme)
+		a.windowButtonsDark = playbackLayout
+	}
+	if playbackLayout {
 		a.fullscreenVideoView(c)
 		return
 	}
@@ -526,31 +536,52 @@ func (a *app) videoSurface(c *ui.Context) {
 	})
 }
 
-// fullscreenVideoView shows only the video, filling the whole window, with
-// the overlay controls on top — so fullscreen is the video, not the app.
+// Window playback retains a dark native drag region outside the WebView.
+// System fullscreen leaves the entire surface to the video and its controls.
+func (a *app) playbackTitlebar(c *ui.Context) {
+	bar := c.TitleBar()
+	ui.Row(c.Key("playback-titlebar")).Label("播放窗口标题栏").FillWidth().Height(max(float32(40), bar.Height)).Shrink(0).
+		PaddingStart(bar.Left + 12).PaddingEnd(bar.Right + 16).Gap(12).AlignItems(ui.Center).
+		Background(ui.Hex("#151518")).DragWindow().Children(func() {
+		title := a.playingSeries.Title
+		if title == "" {
+			title = "正在播放"
+		}
+		ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(ui.Hex("#e5e5e7")).Grow(1).MinWidth(0).SingleLine().IgnoreInput(true)
+		if a.playingEpisode.Number > 0 {
+			ui.Text(c, fmt.Sprintf("第 %d 集", a.playingEpisode.Number)).FontSize(12).TextColor(ui.Hex("#96969e")).SingleLine().IgnoreInput(true)
+		}
+	})
+}
+
 func (a *app) fullscreenVideoView(c *ui.Context) {
-	ui.Box(c).Fill().Background(videoSurface).Children(func() {
-		if a.player != nil {
-			ui.WebView(c, a.player.Page().WebView()).Fill().Label("短剧画面")
+	ui.Column(c).Fill().Background(videoSurface).Children(func() {
+		if a.windowFullscreen && !a.fullscreenVideo {
+			a.playbackTitlebar(c)
 		}
-		if a.preparing || a.playMessage != "" {
-			ui.Column(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).Center().Padding(30).Gap(14).Background(ui.Hex("#131317")).Children(func() {
-				ui.Text(c, a.playMessage).Wrap().MaxWidth(480).TextColor(ui.Hex("#f5f5f7"))
-				if a.preparing {
-					button(c, "取消加载").OnClick(func() { a.stopPlayer(); a.playID++; a.playMessage = "" })
-				} else {
-					ui.Row(c).Gap(8).Children(func() {
-						primaryButton(c, "重试播放").OnClick(a.retry)
-						if a.canResetDevice {
-							button(c, "换设备重试").OnClick(func() { a.resetDeviceAndRetry() })
-						}
-					})
-				}
-			})
-		}
-		if p := a.player; p != nil {
-			a.configurePlayerControls(p)
-		}
+		ui.Box(c).Grow(1).FillWidth().MinHeight(0).Background(videoSurface).Children(func() {
+			if a.player != nil {
+				ui.WebView(c, a.player.Page().WebView()).Fill().Label("短剧画面")
+			}
+			if a.preparing || a.playMessage != "" {
+				ui.Column(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).Center().Padding(30).Gap(14).Background(ui.Hex("#131317")).Children(func() {
+					ui.Text(c, a.playMessage).Wrap().MaxWidth(480).TextColor(ui.Hex("#f5f5f7"))
+					if a.preparing {
+						button(c, "取消加载").OnClick(func() { a.stopPlayer(); a.playID++; a.playMessage = "" })
+					} else {
+						ui.Row(c).Gap(8).Children(func() {
+							primaryButton(c, "重试播放").OnClick(a.retry)
+							if a.canResetDevice {
+								button(c, "换设备重试").OnClick(func() { a.resetDeviceAndRetry() })
+							}
+						})
+					}
+				})
+			}
+			if p := a.player; p != nil {
+				a.configurePlayerControls(p)
+			}
+		})
 	})
 }
 func (a *app) canJump(delta int) bool {

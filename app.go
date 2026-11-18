@@ -71,6 +71,7 @@ type app struct {
 	qualities                                 []string
 	autoplay, pinned, portrait                bool
 	fullscreenVideo                           bool
+	windowButtonsDark                         bool
 	windowFullscreen                          bool
 	normalWidth, normalHeight                 int
 	volume, rate                              float64
