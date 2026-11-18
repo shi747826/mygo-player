@@ -331,7 +331,7 @@ func (a *app) masonryGrid(c *ui.Context) {
 // Progress belongs to the cover so every grid row keeps the same height.
 func cardHeight(colWidth float32) float32 {
 	cover := colWidth / gridAspect
-	return cover + 62
+	return cover + 70
 }
 func (a *app) seriesCard(c *ui.Context, s catalog.Series) {
 	ui.Column(c.Key(s.ID)).Padding(0).Gap(8).MinWidth(0).Children(func() {
@@ -357,7 +357,7 @@ func (a *app) seriesCard(c *ui.Context, s catalog.Series) {
 				})
 			}
 		})
-		ui.Column(c).FillWidth().MinWidth(0).Gap(4).Children(func() {
+		ui.Column(c).FillWidth().MinWidth(0).Gap(12).Children(func() {
 			ui.Text(c, s.Title).FontSize(14).FontWeight(500).FillWidth().MinWidth(0).SingleLine().Height(20)
 			ui.Row(c).FillWidth().Height(30).Gap(6).AlignItems(ui.Center).Children(func() {
 				button(c, "播放").Height(28).PaddingX(10).OnClick(func() { a.selectSeries(s, true) })
