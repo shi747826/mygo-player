@@ -6,8 +6,8 @@
 <key>CFBundleIdentifier</key><string>dev.local.mygo-player</string>
 <key>CFBundleExecutable</key><string>mygo-player</string>
 <key>CFBundleIconFile</key><string>AppIcon.icns</string>
-<key>CFBundleVersion</key><string>0.3.7</string>
-<key>CFBundleShortVersionString</key><string>0.3.7</string>
+<key>CFBundleVersion</key><string>0.3.8</string>
+<key>CFBundleShortVersionString</key><string>0.3.8</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSMinimumSystemVersion</key><string>12.0</string>
 <key>NSHighResolutionCapable</key><true/>
