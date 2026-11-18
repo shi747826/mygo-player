@@ -50,9 +50,24 @@
   </nav>
 </div>
 
-<section id="player" class="player" hidden role="dialog" aria-modal="true" aria-label="全屏播放">
-  <video id="video" playsinline webkit-playsinline preload="metadata"></video>
-  <div class="player-wash" aria-hidden="true"></div>
+<section id="player" class="player controls-hidden" hidden role="dialog" aria-modal="true" aria-label="全屏播放">
+  <div id="prevPreview" class="episode-preview preview-prev" aria-hidden="true">
+    <span class="preview-kicker">上一集</span>
+    <strong id="prevPreviewNumber" class="preview-number">—</strong>
+    <span id="prevPreviewTitle" class="preview-title"></span>
+  </div>
+  <div id="nextPreview" class="episode-preview preview-next" aria-hidden="true">
+    <span class="preview-kicker">下一集</span>
+    <strong id="nextPreviewNumber" class="preview-number">—</strong>
+    <span id="nextPreviewTitle" class="preview-title"></span>
+  </div>
+
+  <div id="playerStage" class="player-stage">
+    <video id="video" playsinline webkit-playsinline preload="metadata"></video>
+  </div>
+  <div id="playerBackdrop" class="player-backdrop" aria-hidden="true"></div>
+  <div class="player-scrim" aria-hidden="true"></div>
+
   <div id="mediaPlaceholder" class="media-placeholder" hidden>
     <div class="spinner" aria-hidden="true"></div>
     <p id="mediaMessage">正在准备播放</p>
@@ -61,57 +76,67 @@
     </div>
   </div>
 
+  <div id="playerGesture" class="player-gesture" aria-hidden="true"></div>
+
   <header class="player-header">
-    <button type="button" id="playerBack" class="round-button" aria-label="返回">
+    <button type="button" id="playerBack" class="player-back" aria-label="返回">
       <svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>
     </button>
     <div class="player-context">
       <span id="playerSource" class="player-source"></span>
       <span id="playerEpisodeTag" class="player-episode-tag"></span>
     </div>
-    <button type="button" id="playerFavorite" class="round-button" aria-label="收藏" aria-pressed="false">
-      <svg class="icon" aria-hidden="true"><use href="#i-heart"/></svg>
-    </button>
   </header>
 
-  <div id="gestureZone" class="gesture-zone" aria-hidden="true"></div>
+  <div id="episodeFlash" class="episode-flash" hidden aria-live="polite">
+    <strong id="episodeFlashNumber"></strong>
+    <span id="episodeFlashTitle"></span>
+  </div>
+
+  <div id="boostBadge" class="boost-badge" hidden role="status">
+    <span class="boost-pulse" aria-hidden="true"></span>
+    <strong>2×</strong><span>快进中</span>
+  </div>
+
   <div id="pauseFlash" class="pause-flash" hidden aria-hidden="true">
     <svg class="icon"><use href="#i-play"/></svg>
   </div>
 
+  <aside class="player-actions" aria-label="播放操作">
+    <button type="button" id="playerFavorite" class="player-action" aria-label="收藏" aria-pressed="false">
+      <span class="action-icon"><svg class="icon" aria-hidden="true"><use href="#i-heart"/></svg></span>
+      <span id="favoriteLabel">追剧</span>
+    </button>
+  </aside>
+
   <div class="player-caption">
-    <p id="playerEyebrow" class="eyebrow"></p>
     <h1 id="playerTitle"></h1>
     <p id="playerEpisodeTitle" class="player-episode-title"></p>
     <p id="playerDescription" class="player-description"></p>
   </div>
 
-  <div id="playerControlPanel" class="player-dock">
-    <div class="seek-row">
-      <span id="timeCurrent" class="time">0:00</span>
-      <input id="seek" class="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="播放进度">
-      <span id="timeDuration" class="time">0:00</span>
+  <div id="playerControls" class="player-controls">
+    <div class="progress-panel">
+      <div class="progress-meta">
+        <span id="timeCurrent" class="time">0:00</span>
+        <span id="timeDuration" class="time">0:00</span>
+      </div>
+      <div id="seekWrap" class="seek-wrap">
+        <input id="seek" class="seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="播放进度">
+        <div id="seekBubble" class="seek-bubble" hidden>
+          <strong id="seekBubbleTime">0:00</strong>
+          <small id="seekBubbleTotal">/ 0:00</small>
+        </div>
+      </div>
     </div>
-    <div class="transport">
-      <button type="button" id="prevEpisode" class="transport-side" aria-label="上一集">
-        <svg class="icon" aria-hidden="true"><use href="#i-prev"/></svg>
-      </button>
-      <button type="button" id="playPause" class="play-button" aria-label="播放">
-        <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>
-      </button>
-      <button type="button" id="nextEpisode" class="transport-side" aria-label="下一集">
-        <svg class="icon" aria-hidden="true"><use href="#i-next"/></svg>
-      </button>
-    </div>
-    <div class="player-meta-row">
-      <button type="button" id="openEpisodes" class="episode-open">
+    <div class="player-bottom">
+      <button type="button" id="openEpisodes" class="episode-pill">
         <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>
         <span id="episodeOpenLabel">选集</span>
-        <svg class="icon episode-open-chevron" aria-hidden="true"><use href="#i-down"/></svg>
+        <svg class="icon episode-pill-chevron" aria-hidden="true"><use href="#i-down"/></svg>
       </button>
       <span id="qualityBadge" class="quality-badge" hidden></span>
     </div>
-    <p class="gesture-hint">上下滑动切集 · 点击画面暂停</p>
   </div>
 
   <div id="playerDetailLoading" class="player-state" hidden>
@@ -126,7 +151,7 @@
 
 <div id="overlay" class="overlay" hidden>
   <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1">
-    <div class="sheet-grip" aria-hidden="true"></div>
+    <div id="sheetGrip" class="sheet-grip" aria-hidden="true"></div>
     <header class="sheet-header">
       <div>
         <p id="sheetKicker" class="eyebrow"></p>

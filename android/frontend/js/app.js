@@ -71,11 +71,21 @@
     quality: '',
     closing: false,
     seeking: false,
-    pointer: null,
-    swipedAt: 0,
     pauseTimer: 0,
     endTimer: 0,
-    returnFocus: null
+    returnFocus: null,
+    controlsTimer: 0,
+    controlsHidden: true,
+    controlsHold: false,
+    gesture: null,
+    longPressTimer: 0,
+    boosting: false,
+    suppressClickUntil: 0,
+    flashTimer: 0,
+    stageOffset: 0,
+    slideLocked: false,
+    lastWheelAt: 0,
+    sheetDrag: null
   };
 
   var dom = {};
@@ -158,9 +168,52 @@
     }
   }
 
+  function rawErrorMessage(error) {
+    if (!error) return '';
+    if (typeof error === 'string') return error.trim();
+    if (typeof error.message === 'string') return error.message.trim();
+    return '';
+  }
+
+  function classifyTechnicalError(message) {
+    var text = asString(message).trim();
+    if (!text) return '';
+    if (/(transport\s*failed|\btransport\b|dial\s+tcp|\bdial\b|timeout|timed\s*out|connection\s+(?:reset|refused|closed|aborted)|\bEOF\b|no\s+such\s+host|network\s+is\s+unreachable|i\/o\s+timeout|broken\s+pipe|tls\s+handshake|proxy\s+error|http2?\s+error)/i.test(text)) {
+      return '无法连接来源服务器，请检查网络或代理后重试。';
+    }
+    if (/(unauthorized|forbidden|invalid\s+token|session\s+expired)/i.test(text)) {
+      return '应用会话已失效，请重新打开页面。';
+    }
+    if (/(not\s+found|no\s+route|\b404\b)/i.test(text)) {
+      return '来源中没有找到该内容。';
+    }
+    if (/^[a-z0-9_-]{1,48}:\s/i.test(text) || /failed\s*:/i.test(text)) {
+      return '来源服务暂时不可用，请重试。';
+    }
+    return '';
+  }
+
   function errorText(error, fallback) {
-    if (error && typeof error.message === 'string' && error.message.trim()) return error.message;
+    var status = error && (error.status || error.statusCode) || 0;
+    if (status === 401 || status === 403) return '应用会话已失效，请重新打开页面。';
+    var message = rawErrorMessage(error);
+    var classified = classifyTechnicalError(message);
+    if (classified) return classified;
+    if (message && !/[\u3400-\u9fff]/.test(message) && /[a-z]{3,}/i.test(message)) {
+      return '来源服务暂时不可用，请稍后重试。';
+    }
+    if (message) return message;
+    if (status === 404) return '来源中没有找到该内容。';
+    if (status === 408 || status === 429 || status >= 500) return '来源服务暂时不可用，请稍后重试。';
     return fallback || '请求失败，请稍后重试。';
+  }
+
+  function sourceFailureText(raw) {
+    var message = rawErrorMessage(raw);
+    var classified = classifyTechnicalError(message);
+    if (classified) return classified;
+    if (/[\u3400-\u9fff]/.test(message)) return message;
+    return '来源连接失败，请稍后重试。';
   }
 
   function sourceStorageGet() {
@@ -1087,11 +1140,19 @@
         var copy = el('span', 'source-copy');
         var strong = el('strong');
         strong.appendChild(document.createTextNode(source.name));
-        strong.appendChild(el('em', '', source.available ? '可用' : '不可用'));
+        var statusBadge = el('em', source.available ? '' : 'is-unavailable', source.available ? '可用' : '暂不可用');
+        strong.appendChild(statusBadge);
         copy.appendChild(strong);
         var detail = source.version ? 'v' + source.version : '未知版本';
         if (source.capabilities.length) detail += ' · ' + source.capabilities.length + ' 项能力';
-        var small = el('small', source.error ? 'error' : '', source.error || detail);
+        var small = el('small', '');
+        if (!source.available) {
+          small.className = 'error';
+          small.textContent = '暂不可用 · ' + sourceFailureText(source.error);
+          row.setAttribute('aria-label', source.name + '，暂不可用');
+        } else {
+          small.textContent = detail;
+        }
         copy.appendChild(small);
         append(row, avatar, copy);
         if (state.source && state.source.id === source.id) row.appendChild(icon('check'));
@@ -1106,6 +1167,14 @@
         list.appendChild(row);
       });
       body.appendChild(list);
+      if (state.sources.some(function (source) { return !source.available; })) {
+        var retry = el('button', 'source-retry', '重新检测来源');
+        retry.type = 'button';
+        retry.addEventListener('click', function () {
+          closeSheetWithAction(function () { boot(); });
+        });
+        body.appendChild(retry);
+      }
       body.appendChild(el('p', 'source-note',
         '来源名称、版本、导航与筛选均来自来源 manifest。Android 来源随 APK 内嵌；当前手机运行时不能安装桌面 EXE 插件，也不能添加外部仓库。'));
     });
@@ -1170,6 +1239,12 @@
       pushHistory('sheet');
       state.sheetOpen = true;
     }
+    if (player.open) {
+      player.controlsHold = true;
+      hideControls(true);
+    }
+    dom.sheet.style.transition = '';
+    dom.sheet.style.transform = '';
     dom.sheetTitle.textContent = title;
     dom.sheetKicker.textContent = kicker || '';
     clear(dom.sheetBody);
@@ -1182,12 +1257,20 @@
   function closeSheetUI() {
     if (!state.sheetOpen) return;
     state.sheetOpen = false;
+    player.sheetDrag = null;
+    dom.sheet.classList.remove('is-dragging');
+    dom.sheet.style.transition = '';
+    dom.sheet.style.transform = '';
     dom.overlay.hidden = true;
     clear(dom.sheetBody);
     var target = state.lastFocused;
     state.lastFocused = null;
     if (target && target.isConnected && !player.open) {
       try { target.focus({ preventScroll: true }); } catch (_error) { /* ignore */ }
+    }
+    if (player.open) {
+      player.controlsHold = false;
+      showControls(false);
     }
   }
 
@@ -1229,6 +1312,239 @@
     if (player.open) closePlayerUI();
   }
 
+  function controlsVisible() {
+    return !!player.open && !player.controlsHidden;
+  }
+
+  function clearControlsTimer() {
+    window.clearTimeout(player.controlsTimer);
+    player.controlsTimer = 0;
+  }
+
+  function scheduleControlsHide(delay) {
+    clearControlsTimer();
+    if (!player.open || player.controlsHold || player.seeking || player.boosting) return;
+    player.controlsTimer = window.setTimeout(function () {
+      if (!player.open || player.controlsHold || player.seeking || player.boosting) return;
+      hideControls(true);
+    }, delay || 3000);
+  }
+
+  function setPlayerBackdrop(series) {
+    var layer = document.getElementById('playerBackdrop');
+    if (!layer) return;
+    var raw = series && series.cover ? safeHttpUrl(series.cover) : '';
+    var url = raw && api.coverUrl ? api.coverUrl(raw) : '';
+    layer.style.backgroundImage = url ? 'url("' + url.replace(/"/g, '%22') + '")' : '';
+    layer.style.display = url ? '' : 'none';
+  }
+
+  function showControls(hold) {
+    if (!player.open || state.sheetOpen) return;
+    player.controlsHold = !!hold;
+    player.controlsHidden = false;
+    dom.player.classList.remove('controls-hidden');
+    if (!hold) scheduleControlsHide(3000);
+  }
+
+  function hideControls(force) {
+    if (!player.open) return;
+    if (!force && player.controlsHold) return;
+    clearControlsTimer();
+    player.controlsHidden = true;
+    dom.player.classList.add('controls-hidden');
+    dom.seekBubble.hidden = true;
+    dom.seek.classList.remove('is-seeking');
+  }
+
+  function setStageOffset(value, animate) {
+    player.stageOffset = value;
+    if (!dom.playerStage) return;
+    if (animate) {
+      dom.playerStage.classList.remove('is-dragging');
+      dom.playerStage.classList.add('is-snapping');
+    } else {
+      dom.playerStage.classList.remove('is-snapping');
+      dom.playerStage.classList.add('is-dragging');
+    }
+    dom.playerStage.style.transform = 'translate3d(0,' + value + 'px,0)';
+  }
+
+  function resetSwipeState() {
+    window.clearTimeout(player.longPressTimer);
+    player.longPressTimer = 0;
+    player.gesture = null;
+    player.slideLocked = false;
+    player.boosting = false;
+    player.stageOffset = 0;
+    player.controlsHold = false;
+    if (dom.video) {
+      try { dom.video.playbackRate = 1; } catch (_error) { /* ignore */ }
+    }
+    if (dom.playerStage) {
+      dom.playerStage.classList.remove('is-dragging', 'is-snapping');
+      dom.playerStage.style.transform = 'translate3d(0,0,0)';
+    }
+    if (dom.boostBadge) {
+      dom.boostBadge.classList.remove('is-visible');
+      dom.boostBadge.hidden = true;
+    }
+    hideEpisodeFlash();
+  }
+
+  function renderPreviews() {
+    if (!dom.prevPreviewNumber) return;
+    var current = player.episodes[player.index];
+    var prev = player.episodes[player.index - 1];
+    var next = player.episodes[player.index + 1];
+    if (prev) {
+      dom.prevPreviewNumber.textContent = episodeLabel(prev, player.index - 1);
+      dom.prevPreviewTitle.textContent = episodeTitle(prev, player.index - 1);
+    } else {
+      dom.prevPreviewNumber.textContent = '—';
+      dom.prevPreviewTitle.textContent = '已经是第一集';
+    }
+    if (next) {
+      dom.nextPreviewNumber.textContent = episodeLabel(next, player.index + 1);
+      dom.nextPreviewTitle.textContent = episodeTitle(next, player.index + 1);
+    } else {
+      dom.nextPreviewNumber.textContent = '—';
+      dom.nextPreviewTitle.textContent = '已经是最后一集';
+    }
+    if (current) {
+      dom.prevPreview.setAttribute('aria-hidden', prev ? 'true' : 'false');
+      dom.nextPreview.setAttribute('aria-hidden', next ? 'true' : 'false');
+    }
+  }
+
+  function setEpisodeFlash(number, title, boundary) {
+    if (!dom.episodeFlash) return;
+    window.clearTimeout(player.flashTimer);
+    dom.episodeFlash.hidden = false;
+    dom.episodeFlash.classList.toggle('is-boundary', !!boundary);
+    dom.episodeFlashNumber.textContent = number || '';
+    dom.episodeFlashTitle.textContent = title || '';
+    dom.episodeFlash.style.opacity = '';
+    void dom.episodeFlash.offsetWidth;
+    dom.episodeFlash.classList.add('is-visible');
+  }
+
+  function showEpisodeFlash(index, boundaryMessage) {
+    if (boundaryMessage) {
+      setEpisodeFlash(boundaryMessage, '', true);
+    } else {
+      var episode = player.episodes[index];
+      if (!episode) return;
+      setEpisodeFlash(episodeLabel(episode, index), episodeTitle(episode, index), false);
+    }
+    window.clearTimeout(player.flashTimer);
+    player.flashTimer = window.setTimeout(hideEpisodeFlash, 920);
+  }
+
+  function hideEpisodeFlash() {
+    window.clearTimeout(player.flashTimer);
+    if (!dom.episodeFlash) return;
+    dom.episodeFlash.classList.remove('is-visible');
+    dom.episodeFlash.style.opacity = '';
+  }
+
+  function hideEpisodeFlashSoon() {
+    window.clearTimeout(player.flashTimer);
+    player.flashTimer = window.setTimeout(hideEpisodeFlash, 120);
+  }
+
+  function updateSwipeHint(dy, atStart, atEnd) {
+    var distance = Math.abs(dy);
+    if (distance < 5) {
+      hideEpisodeFlashSoon();
+      return;
+    }
+    var direction = dy < 0 ? 1 : -1;
+    var targetIndex = player.index + direction;
+    var opacity = Math.min(1, Math.max(0, (distance - 5) / 64));
+    if ((atStart && dy > 0) || (atEnd && dy < 0)) {
+      setEpisodeFlash(direction < 0 ? '已经是第一集' : '已经是最后一集', '', true);
+    } else {
+      var target = player.episodes[targetIndex];
+      if (!target) {
+        hideEpisodeFlashSoon();
+        return;
+      }
+      setEpisodeFlash(episodeLabel(target, targetIndex), episodeTitle(target, targetIndex), false);
+    }
+    dom.episodeFlash.style.opacity = String(opacity);
+  }
+
+  function boostStart() {
+    if (!player.open || state.sheetOpen || player.mediaError) return;
+    if (!dom.video.getAttribute('src') || !player.episodes.length) return;
+    player.boosting = true;
+    hideControls(true);
+    if (dom.episodeFlash) hideEpisodeFlash();
+    dom.boostBadge.hidden = false;
+    void dom.boostBadge.offsetWidth;
+    dom.boostBadge.classList.add('is-visible');
+    try { dom.video.playbackRate = 2; } catch (_error) { /* ignore */ }
+    if (dom.video.paused) attemptPlay();
+  }
+
+  function boostEnd() {
+    if (!player.boosting) return;
+    player.boosting = false;
+    try { dom.video.playbackRate = 1; } catch (_error) { /* ignore */ }
+    dom.boostBadge.classList.remove('is-visible');
+    window.setTimeout(function () {
+      if (!player.boosting) dom.boostBadge.hidden = true;
+    }, 220);
+    player.suppressClickUntil = Date.now() + 500;
+    player.controlsHold = false;
+    scheduleControlsHide(900);
+  }
+
+  function finishSwipe(direction) {
+    var target = player.index + (direction === 'next' ? 1 : -1);
+    var height = window.innerHeight || 844;
+    if (target < 0) {
+      setStageOffset(0, true);
+      showEpisodeFlash(-1, '已经是第一集');
+      showToast('已经是第一集。');
+      player.slideLocked = false;
+      return;
+    }
+    if (target >= player.episodes.length) {
+      setStageOffset(0, true);
+      showEpisodeFlash(-1, '已经是最后一集');
+      showToast('已经是最后一集。');
+      player.slideLocked = false;
+      return;
+    }
+    player.slideLocked = true;
+    setStageOffset(direction === 'next' ? -height : height, true);
+    window.setTimeout(function () {
+      if (!player.open) {
+        player.slideLocked = false;
+        return;
+      }
+      // Place the fresh stage on the opposite edge, then bring it in.
+      setStageOffset(direction === 'next' ? height : -height, false);
+      switchEpisode(target, { fromSwipe: true, direction: direction });
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () {
+          setStageOffset(0, true);
+          window.setTimeout(function () { player.slideLocked = false; }, 240);
+        });
+      });
+    }, 215);
+  }
+
+  function updateLandscapeFit() {
+    if (!dom.player || !dom.video) return;
+    var width = dom.video.videoWidth;
+    var height = dom.video.videoHeight;
+    if (width > 0 && height > 0 && width > height) dom.player.classList.add('is-landscape');
+    else dom.player.classList.remove('is-landscape');
+  }
+
   function openSeries(series, options) {
     if (!state.source || !series || !series.id) return;
     options = options || {};
@@ -1258,7 +1574,12 @@
     var library = currentLibrary();
     if (library) player.favorite = !!library.favorites[series.id];
 
+    resetSwipeState();
     dom.player.hidden = false;
+    dom.player.classList.remove('is-landscape');
+    dom.player.classList.add('controls-hidden');
+    player.controlsHidden = true;
+    player.controlsHold = false;
     document.body.classList.add('player-open');
     dom.app.setAttribute('aria-hidden', 'true');
     dom.playerDetailLoading.hidden = true;
@@ -1340,6 +1661,7 @@
       dom.playerDetailLoading.hidden = true;
       dom.playerDetailError.hidden = false;
       dom.playerDetailErrorText.textContent = player.detailError;
+      showControls(true);
       updateTransport();
     } finally {
       if (epoch === player.detailEpoch) player.detailAbort = null;
@@ -1348,45 +1670,41 @@
 
   function renderPlayerMeta() {
     if (!player.series) return;
-    dom.playerSource.textContent = player.sourceName || '来源';
     var episode = player.episodes[player.index];
+    dom.playerSource.textContent = player.sourceName || '来源';
     dom.playerEpisodeTag.textContent = episode ? episodeLabel(episode, player.index) : '准备中';
-    dom.playerEyebrow.textContent = 'MYGO · ANDROID';
     dom.playerTitle.textContent = player.series.title;
-    dom.playerEpisodeTitle.textContent = episode ? episodeTitle(episode, player.index) : '正在读取剧集';
+    setPlayerBackdrop(player.series);
+    var title = episode ? episodeTitle(episode, player.index) : '';
+    var sameAsNumber = episode && (title === episodeLabel(episode, player.index) || title === '第' + episodeNumber(episode, player.index) + '集');
+    dom.playerEpisodeTitle.textContent = title;
+    dom.playerEpisodeTitle.hidden = !title || sameAsNumber;
     var description = player.series.description || player.series.release_note || '';
     dom.playerDescription.textContent = description;
     dom.playerDescription.hidden = !description;
     dom.qualityBadge.textContent = player.quality || '';
     dom.qualityBadge.hidden = !player.quality;
+    renderPreviews();
   }
 
   function updateFavoriteButton() {
     if (!dom.playerFavorite) return;
     dom.playerFavorite.classList.toggle('is-favorite', player.favorite);
     dom.playerFavorite.setAttribute('aria-pressed', player.favorite ? 'true' : 'false');
-    dom.playerFavorite.setAttribute('aria-label', player.favorite ? '取消收藏' : '收藏');
+    dom.playerFavorite.setAttribute('aria-label', player.favorite ? '取消追剧收藏' : '加入追剧收藏');
     dom.playerFavorite.disabled = player.favoriteBusy;
+    if (dom.favoriteLabel) dom.favoriteLabel.textContent = player.favorite ? '已追剧' : '追剧';
   }
 
   function updateTransport() {
     var hasEpisodes = player.episodes.length > 0;
     var episode = hasEpisodes ? player.episodes[player.index] : null;
-    dom.prevEpisode.disabled = !hasEpisodes || player.index <= 0;
-    dom.nextEpisode.disabled = !hasEpisodes || player.index >= player.episodes.length - 1;
-    dom.playPause.disabled = !episode;
     dom.openEpisodes.disabled = !hasEpisodes;
     dom.episodeOpenLabel.textContent = hasEpisodes
-      ? '选集 · ' + episodeLabel(episode, player.index) + ' / 共 ' + player.episodes.length + ' 集'
+      ? '选集 · 第 ' + episodeNumber(episode, player.index) + '/' + player.episodes.length + ' 集'
       : '选集';
-    updatePlayPauseIcon();
-  }
-
-  function updatePlayPauseIcon() {
-    if (!dom.playPause) return;
-    var paused = dom.video.paused;
-    setIcon(dom.playPause, paused ? 'play' : 'pause');
-    dom.playPause.setAttribute('aria-label', paused ? '播放' : '暂停');
+    dom.qualityBadge.textContent = player.quality || '';
+    dom.qualityBadge.hidden = !player.quality;
   }
 
   function showMediaLoading(message) {
@@ -1407,8 +1725,10 @@
   function showMediaError(message) {
     player.mediaLoading = false;
     player.mediaError = message;
+    hideControls(true);
     dom.mediaPlaceholder.hidden = false;
     dom.mediaPlaceholder.querySelector('.spinner').hidden = true;
+    showControls(true);
     dom.mediaMessage.textContent = message;
     dom.mediaErrorActions.hidden = false;
     dropSession();
@@ -1428,7 +1748,7 @@
     player.autoPlayPending = false;
     player.pendingSeek = 0;
     player.suppressMediaError = false;
-    updatePlayPauseIcon();
+    if (dom.player) dom.player.classList.remove('is-landscape');
   }
 
   function releaseSession(session, sourceId) {
@@ -1461,6 +1781,7 @@
     player.mediaError = '';
     player.resumePosition = player.resumePosition || 0;
     dom.qualityBadge.hidden = true;
+    hideControls(true);
     showMediaLoading('正在解析播放地址…');
     updateTransport();
 
@@ -1577,32 +1898,51 @@
     player.pauseTimer = window.setTimeout(function () { dom.pauseFlash.hidden = true; }, 520);
   }
 
-  function switchEpisode(index) {
+  function switchEpisode(index, options) {
+    options = options || {};
     if (!player.open || index < 0 || index >= player.episodes.length) return;
     if (index === player.index) {
       if (dom.video.paused) attemptPlay();
       return;
     }
+    resetBoost();
     flushProgress(true, true);
     player.index = index;
     player.resumePosition = 0;
     player.pendingSeek = 0;
     player.quality = '';
     player.mediaError = '';
+    if (!options.fromSwipe) setStageOffset(0, false);
     renderPlayerMeta();
     updateFavoriteButton();
     updateTransport();
+    showEpisodeFlash(index);
+    // A switch is an immersive cut: no controls for the next three seconds.
+    hideControls(true);
     startPlayback();
+  }
+
+  function resetBoost() {
+    window.clearTimeout(player.longPressTimer);
+    player.longPressTimer = 0;
+    player.boosting = false;
+    try { if (dom.video) dom.video.playbackRate = 1; } catch (_error) { /* ignore */ }
+    if (dom.boostBadge) {
+      dom.boostBadge.classList.remove('is-visible');
+      dom.boostBadge.hidden = true;
+    }
   }
 
   function goRelative(delta) {
     if (!player.open || !player.episodes.length) return;
     var next = player.index + delta;
     if (next < 0) {
+      showEpisodeFlash(-1, '已经是第一集');
       showToast('已经是第一集。');
       return;
     }
     if (next >= player.episodes.length) {
+      showEpisodeFlash(-1, '已经是最后一集');
       showToast('已经是最后一集。');
       return;
     }
@@ -1667,6 +2007,8 @@
 
   function openEpisodeSheet() {
     if (!player.open || !player.episodes.length) return;
+    player.controlsHold = true;
+    hideControls(true);
     var currentRange = Math.floor(player.index / RANGE_SIZE);
     var range = currentRange;
     var ranges = Math.ceil(player.episodes.length / RANGE_SIZE);
@@ -1735,6 +2077,11 @@
     if (!player.open) return;
     flushProgress(true, true);
     player.closing = true;
+    resetSwipeState();
+    clearControlsTimer();
+    player.controlsHold = false;
+    player.controlsHidden = true;
+    dom.player.classList.add('controls-hidden');
     var session = player.session;
     var sourceId = player.sourceId;
     player.session = '';
@@ -1918,55 +2265,176 @@
     setView(wrap);
   }
 
+  // The Android WebView's layout viewport can be taller than the visible
+  // area (the system navigation bar), so fixed layers follow the visible
+  // height instead of 100dvh.
+  function syncAppHeight() {
+    var height = window.innerHeight || 0;
+    if (height > 0) document.documentElement.style.setProperty('--app-h', height + 'px');
+  }
+
   function bindPlayerEvents() {
     dom.playerBack.addEventListener('click', requestClosePlayer);
     dom.playerFavorite.addEventListener('click', toggleFavorite);
-    dom.playPause.addEventListener('click', togglePlayback);
-    dom.prevEpisode.addEventListener('click', function () { goRelative(-1); });
-    dom.nextEpisode.addEventListener('click', function () { goRelative(1); });
     dom.openEpisodes.addEventListener('click', openEpisodeSheet);
     dom.mediaRetry.addEventListener('click', startPlayback);
     dom.playerDetailRetry.addEventListener('click', loadDetail);
 
-    dom.gestureZone.addEventListener('pointerdown', function (event) {
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
-      player.pointer = { x: event.clientX, y: event.clientY, time: Date.now() };
-    });
-    function endPointer(event) {
-      if (!player.pointer) return;
-      var dx = event.clientX - player.pointer.x;
-      var dy = event.clientY - player.pointer.y;
-      var elapsed = Date.now() - player.pointer.time;
-      player.pointer = null;
-      if (elapsed < 650 && Math.abs(dy) > 62 && Math.abs(dy) > Math.abs(dx) * 1.15) {
-        player.swipedAt = Date.now();
-        if (dy < 0) goRelative(1);
-        else goRelative(-1);
-      }
+    function stopLongPress() {
+      window.clearTimeout(player.longPressTimer);
+      player.longPressTimer = 0;
     }
-    dom.gestureZone.addEventListener('pointerup', endPointer);
-    dom.gestureZone.addEventListener('pointercancel', function () { player.pointer = null; });
-    dom.gestureZone.addEventListener('click', function () {
-      if (Date.now() - player.swipedAt < 450) return;
+
+    function gestureDown(event) {
+      if (!player.open || state.sheetOpen || player.slideLocked) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (event.isPrimary === false) return;
+      event.preventDefault();
+      stopLongPress();
+      player.gesture = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastY: event.clientY,
+        startTime: Date.now(),
+        axis: '',
+        moved: false,
+        boosted: false
+      };
+      showControls(true);
+      try { dom.playerGesture.setPointerCapture(event.pointerId); } catch (_error) { /* older webview */ }
+      player.longPressTimer = window.setTimeout(function () {
+        var gesture = player.gesture;
+        if (!gesture || gesture.moved || gesture.boosted) return;
+        gesture.boosted = true;
+        boostStart();
+      }, 380);
+    }
+
+    function gestureMove(event) {
+      var gesture = player.gesture;
+      if (!gesture || event.pointerId !== gesture.id) return;
+      if (gesture.boosted) return;
+      var dx = event.clientX - gesture.startX;
+      var dy = event.clientY - gesture.startY;
+      gesture.lastY = event.clientY;
+      if (!gesture.moved && Math.abs(dx) * Math.abs(dx) + Math.abs(dy) * Math.abs(dy) > 64) {
+        gesture.moved = true;
+        stopLongPress();
+      }
+      if (!gesture.moved) return;
+      if (!gesture.axis) {
+        if (Math.abs(dy) > 4) gesture.axis = Math.abs(dy) >= Math.abs(dx) ? 'y' : 'x';
+      }
+      if (gesture.axis !== 'y') return;
+      event.preventDefault();
+      var height = window.innerHeight || 844;
+      var atStart = player.index <= 0 && dy > 0;
+      var atEnd = player.index >= player.episodes.length - 1 && dy < 0;
+      var offset = dy;
+      if (atStart || atEnd) offset = dy * .28;
+      offset = Math.max(-height * .92, Math.min(height * .92, offset));
+      setStageOffset(offset, false);
+      updateSwipeHint(dy, atStart, atEnd);
+    }
+
+    function gestureUp(event) {
+      var gesture = player.gesture;
+      if (!gesture || event.pointerId !== gesture.id) return;
+      stopLongPress();
+      player.gesture = null;
+      try { dom.playerGesture.releasePointerCapture(event.pointerId); } catch (_error) { /* ignore */ }
+      if (gesture.boosted) {
+        boostEnd();
+        return;
+      }
+      if (gesture.moved && gesture.axis === 'y') {
+        var dy = event.clientY - gesture.startY;
+        var elapsed = Math.max(1, Date.now() - gesture.startTime);
+        var velocity = dy / elapsed;
+        var threshold = Math.min(190, Math.max(120, (window.innerHeight || 844) * .2));
+        player.suppressClickUntil = Date.now() + 450;
+        if (Math.abs(dy) >= threshold || (Math.abs(dy) > 64 && Math.abs(velocity) > .5)) {
+          finishSwipe(dy < 0 ? 'next' : 'prev');
+        } else {
+          setStageOffset(0, true);
+          hideEpisodeFlashSoon();
+          player.controlsHold = false;
+          scheduleControlsHide(3000);
+        }
+        return;
+      }
+      if (gesture.moved) {
+        setStageOffset(0, true);
+        hideEpisodeFlashSoon();
+        player.controlsHold = false;
+        scheduleControlsHide(3000);
+        return;
+      }
+      // A short, still press toggles playback and leaves the controls up
+      // for a moment, so the progress bar is reachable with one tap.
+      player.suppressClickUntil = Date.now() + 420;
       togglePlayback();
       showPauseFlash(dom.video.paused);
-    });
+      showControls(false);
+      scheduleControlsHide(2600);
+    }
 
-    dom.seek.addEventListener('pointerdown', function () { player.seeking = true; });
+    function gestureCancel() {
+      var gesture = player.gesture;
+      player.gesture = null;
+      stopLongPress();
+      if (gesture && gesture.boosted) boostEnd();
+      setStageOffset(0, true);
+      hideEpisodeFlashSoon();
+      player.controlsHold = false;
+      scheduleControlsHide(3000);
+    }
+
+    dom.playerGesture.addEventListener('pointerdown', gestureDown);
+    dom.playerGesture.addEventListener('pointermove', gestureMove);
+    dom.playerGesture.addEventListener('pointerup', gestureUp);
+    dom.playerGesture.addEventListener('pointercancel', gestureCancel);
+
+    dom.player.addEventListener('contextmenu', function (event) {
+      if (player.open) event.preventDefault();
+    });
+    dom.player.addEventListener('dragstart', function (event) { event.preventDefault(); });
+    dom.player.addEventListener('selectstart', function (event) { event.preventDefault(); });
+
+    dom.seek.addEventListener('pointerdown', function (event) {
+      if (!player.open) return;
+      event.stopPropagation();
+      player.seeking = true;
+      player.controlsHold = true;
+      showControls(true);
+      dom.seek.classList.add('is-seeking');
+      dom.seekBubble.hidden = false;
+      updateSeekUI(true);
+    });
     dom.seek.addEventListener('input', function () {
       var duration = dom.video.duration;
       if (!Number.isFinite(duration) || duration <= 0) return;
       var target = Math.max(0, Math.min(parseFloat(dom.seek.value) || 0, duration));
       try { dom.video.currentTime = target; } catch (_error) { /* ignore */ }
-      updateSeekUI();
+      updateSeekUI(true);
     });
-    dom.seek.addEventListener('change', function () {
+    function endSeek() {
+      if (!player.seeking) return;
       player.seeking = false;
+      player.controlsHold = false;
+      dom.seek.classList.remove('is-seeking');
+      dom.seekBubble.hidden = true;
       flushProgress(true, false);
-    });
+      scheduleControlsHide(3000);
+    }
+    dom.seek.addEventListener('change', endSeek);
+    dom.seek.addEventListener('pointerup', endSeek);
+    dom.seek.addEventListener('pointercancel', endSeek);
 
     dom.video.addEventListener('loadedmetadata', function () {
       if (!player.open) return;
+      updateLandscapeFit();
       var duration = dom.video.duration;
       var seekTo = player.pendingSeek;
       player.pendingSeek = 0;
@@ -1984,6 +2452,9 @@
     dom.video.addEventListener('timeupdate', function () {
       if (!player.open) return;
       if (!player.seeking) updateSeekUI();
+      if (!dom.video.paused && player.boosting) {
+        // 2x playback is a temporary preview; keep the normal save cadence.
+      }
       if (!dom.video.paused && Date.now() - player.lastSaveAt >= SAVE_INTERVAL) {
         flushProgress(false, false);
       }
@@ -1994,11 +2465,12 @@
     dom.video.addEventListener('playing', function () {
       if (!player.open) return;
       hideMediaPlaceholder();
-      updatePlayPauseIcon();
     });
-    dom.video.addEventListener('play', updatePlayPauseIcon);
+    dom.video.addEventListener('play', function () {
+      if (player.boosting) return;
+      scheduleControlsHide(3000);
+    });
     dom.video.addEventListener('pause', function () {
-      updatePlayPauseIcon();
       if (player.open && !player.closing) flushProgress(true, false);
     });
     dom.video.addEventListener('error', function () {
@@ -2017,13 +2489,24 @@
           if (player.open && player.index === oldIndex) switchEpisode(oldIndex + 1);
         }, 380);
       } else {
+        showEpisodeFlash(-1, '已经是最后一集');
         showToast('已经是最后一集。');
       }
     });
-    dom.video.addEventListener('seeked', updateSeekUI);
+    dom.video.addEventListener('seeked', function () { updateSeekUI(); });
   }
 
-  function updateSeekUI() {
+  function updateSeekBubble(current, duration) {
+    if (!dom.seekBubble) return;
+    var valid = Number.isFinite(duration) && duration > 0;
+    var percent = valid ? Math.max(0, Math.min(100, current / duration * 100)) : 0;
+    var left = Math.max(3, Math.min(97, percent));
+    dom.seekBubble.style.left = left + '%';
+    dom.seekBubbleTime.textContent = formatTime(current);
+    dom.seekBubbleTotal.textContent = '/ ' + formatTime(valid ? duration : 0);
+  }
+
+  function updateSeekUI(showBubble) {
     if (!dom.seek) return;
     var duration = dom.video.duration;
     var current = dom.video.currentTime;
@@ -2042,6 +2525,64 @@
     dom.timeCurrent.textContent = formatTime(current);
     var percent = valid ? Math.max(0, Math.min(100, current / duration * 100)) : 0;
     dom.seek.style.setProperty('--p', percent + '%');
+    if (showBubble || player.seeking) {
+      dom.seekBubble.hidden = false;
+      updateSeekBubble(current, duration);
+    } else {
+      dom.seekBubble.hidden = true;
+    }
+  }
+
+  function bindSheetDrag() {
+    function start(event) {
+      if (!state.sheetOpen || player.sheetDrag) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      var target = event.target;
+      if (target && target.closest && target.closest('button')) return;
+      if (!target || !target.closest || !target.closest('.sheet-grip, .sheet-header')) return;
+      player.sheetDrag = {
+        id: event.pointerId,
+        startY: event.clientY,
+        startTime: Date.now(),
+        offset: 0
+      };
+      dom.sheet.classList.add('is-dragging');
+      dom.sheet.style.transition = 'none';
+      try { dom.sheet.setPointerCapture(event.pointerId); } catch (_error) { /* ignore */ }
+    }
+    function move(event) {
+      var drag = player.sheetDrag;
+      if (!drag || event.pointerId !== drag.id) return;
+      var offset = Math.max(0, event.clientY - drag.startY);
+      drag.offset = offset;
+      if (offset > 2) event.preventDefault();
+      dom.sheet.style.transform = 'translate3d(0,' + offset + 'px,0)';
+    }
+    function end(event) {
+      var drag = player.sheetDrag;
+      if (!drag || event.pointerId !== drag.id) return;
+      player.sheetDrag = null;
+      try { dom.sheet.releasePointerCapture(event.pointerId); } catch (_error) { /* ignore */ }
+      var elapsed = Math.max(1, Date.now() - drag.startTime);
+      var velocity = drag.offset / elapsed;
+      dom.sheet.classList.remove('is-dragging');
+      if (drag.offset > 96 || (drag.offset > 44 && velocity > .55)) {
+        dom.sheet.style.transform = 'translate3d(0,' + Math.max(drag.offset, 160) + 'px,0)';
+        requestCloseSheet();
+        return;
+      }
+      dom.sheet.style.transition = 'transform .24s cubic-bezier(.2,.8,.2,1)';
+      dom.sheet.style.transform = 'translate3d(0,0,0)';
+      window.setTimeout(function () {
+        if (!state.sheetOpen) return;
+        dom.sheet.style.transition = '';
+        dom.sheet.style.transform = '';
+      }, 260);
+    }
+    dom.sheet.addEventListener('pointerdown', start);
+    dom.sheet.addEventListener('pointermove', move);
+    dom.sheet.addEventListener('pointerup', end);
+    dom.sheet.addEventListener('pointercancel', end);
   }
 
   function bindGlobalEvents() {
@@ -2052,7 +2593,9 @@
     dom.overlay.addEventListener('click', function (event) {
       if (event.target === dom.overlay) requestCloseSheet();
     });
+    bindSheetDrag();
     window.addEventListener('popstate', handlePopState);
+
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') {
         if (state.sheetOpen) {
@@ -2070,17 +2613,40 @@
       if (event.target && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
       if (event.key === 'ArrowUp') { event.preventDefault(); goRelative(-1); }
       else if (event.key === 'ArrowDown') { event.preventDefault(); goRelative(1); }
-      else if (event.key === ' ') { event.preventDefault(); togglePlayback(); }
+      else if (event.key === ' ') {
+        event.preventDefault();
+        showControls(false);
+        togglePlayback();
+        showPauseFlash(dom.video.paused);
+      }
     });
+
+    dom.player.addEventListener('wheel', function (event) {
+      if (!player.open || state.sheetOpen) return;
+      if (Math.abs(event.deltaY) < 8) return;
+      event.preventDefault();
+      var now = Date.now();
+      if (now - player.lastWheelAt < 430) return;
+      player.lastWheelAt = now;
+      goRelative(event.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
+
+    window.addEventListener('resize', function () {
+      syncAppHeight();
+      if (!player.gesture) setStageOffset(0, false);
+    });
+
     document.addEventListener('visibilitychange', function () {
       if (!player.open) return;
       if (document.visibilityState === 'hidden') {
+        resetBoost();
         if (!dom.video.paused) dom.video.pause();
         flushProgress(true, true);
       }
     });
     window.addEventListener('mygo:suspend', function () {
       if (!player.open) return;
+      resetBoost();
       if (!dom.video.paused) dom.video.pause();
       flushProgress(true, true);
     });
@@ -2101,22 +2667,33 @@
       playerFavorite: byId('playerFavorite'),
       playerSource: byId('playerSource'),
       playerEpisodeTag: byId('playerEpisodeTag'),
-      playerEyebrow: byId('playerEyebrow'),
       playerTitle: byId('playerTitle'),
       playerEpisodeTitle: byId('playerEpisodeTitle'),
       playerDescription: byId('playerDescription'),
+      playerStage: byId('playerStage'),
+      playerGesture: byId('playerGesture'),
+      prevPreview: byId('prevPreview'),
+      prevPreviewNumber: byId('prevPreviewNumber'),
+      prevPreviewTitle: byId('prevPreviewTitle'),
+      nextPreview: byId('nextPreview'),
+      nextPreviewNumber: byId('nextPreviewNumber'),
+      nextPreviewTitle: byId('nextPreviewTitle'),
+      episodeFlash: byId('episodeFlash'),
+      episodeFlashNumber: byId('episodeFlashNumber'),
+      episodeFlashTitle: byId('episodeFlashTitle'),
+      boostBadge: byId('boostBadge'),
+      favoriteLabel: byId('favoriteLabel'),
       mediaPlaceholder: byId('mediaPlaceholder'),
       mediaMessage: byId('mediaMessage'),
       mediaErrorActions: byId('mediaErrorActions'),
       mediaRetry: byId('mediaRetry'),
-      gestureZone: byId('gestureZone'),
       pauseFlash: byId('pauseFlash'),
       seek: byId('seek'),
+      seekBubble: byId('seekBubble'),
+      seekBubbleTime: byId('seekBubbleTime'),
+      seekBubbleTotal: byId('seekBubbleTotal'),
       timeCurrent: byId('timeCurrent'),
       timeDuration: byId('timeDuration'),
-      prevEpisode: byId('prevEpisode'),
-      playPause: byId('playPause'),
-      nextEpisode: byId('nextEpisode'),
       openEpisodes: byId('openEpisodes'),
       episodeOpenLabel: byId('episodeOpenLabel'),
       qualityBadge: byId('qualityBadge'),
@@ -2129,6 +2706,7 @@
       sheetTitle: byId('sheetTitle'),
       sheetKicker: byId('sheetKicker'),
       sheetBody: byId('sheetBody'),
+      sheetGrip: byId('sheetGrip'),
       sheetClose: byId('sheetClose'),
       toast: byId('toast')
     };
@@ -2138,6 +2716,7 @@
       return;
     }
     bindGlobalEvents();
+    syncAppHeight();
     bindPlayerEvents();
     boot();
   }
