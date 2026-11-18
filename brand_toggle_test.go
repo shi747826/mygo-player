@@ -7,7 +7,7 @@ import (
 	"mygo-player/internal/catalog"
 )
 
-// 品牌文字不可点击；普通工具按钮仍使用手型指针。
+// 应用品牌已移除；插件选择仍提供可点击的手型指针。
 func TestBrandDoesNotShowPointerCursor(t *testing.T) {
 	client, err := catalog.New(t.TempDir())
 	if err != nil {
@@ -18,15 +18,18 @@ func TestBrandDoesNotShowPointerCursor(t *testing.T) {
 	a.page = "推荐"
 	a.items = seriesList(4)
 	tt := ui.NewTester(a.view, 1280, 820)
-	// 左上角标识约在 (20..54, 20..54)。
-	tt.Move(37, 37)
+	if tt.HasText("MyGo Player") {
+		t.Fatal("application brand must not appear in the sidebar")
+	}
+	// 侧栏空白仍使用默认指针。
+	tt.Move(220, 44)
 	if got := tt.Cursor(); got != ui.CursorDefault {
 		t.Fatalf("brand cursor = %v, want default arrow", got)
 	}
 	// 普通按钮仍应显示手型，确认没有影响其它控件。
-	r, ok := tt.Find("刷新")
+	r, ok := tt.Find("选择来源")
 	if !ok {
-		t.Fatal("refresh button missing")
+		t.Fatal("source switcher missing")
 	}
 	tt.Move(r.X+r.W/2, r.Y+r.H/2)
 	if got := tt.Cursor(); got != ui.CursorPointer {

@@ -63,7 +63,7 @@ func (a *app) view(c *ui.Context) {
 		return
 	}
 	ui.Row(c).Fill().Gap(0).Background(palette.Background).Children(func() {
-		if !a.portrait && !a.sidebarCollapsed {
+		if !a.portrait {
 			a.sidebar(c)
 		}
 		ui.Column(c).Grow(1).FillHeight().MinWidth(0).Children(func() {
@@ -81,6 +81,9 @@ func (a *app) view(c *ui.Context) {
 		})
 		if a.selected.ID != "" && !a.portrait {
 			a.detailView(c)
+		}
+		if !a.portrait {
+			a.windowControls(c)
 		}
 	})
 }
@@ -141,20 +144,6 @@ func (a *app) sidebarItem(c *ui.Context, page, label string) {
 		a.navigate(page, query)
 		a.portrait = false
 	})
-}
-
-// sidebarToggle stays next to the brand while expanded, and returns to the
-// content header when collapsed so the sidebar can always be restored.
-func (a *app) sidebarToggle(c *ui.Context) ui.Element {
-	label := "收起侧栏"
-	if a.sidebarCollapsed {
-		label = "展开侧栏"
-	}
-	return ui.ButtonBase(c).Key("sidebar-toggle").Label(label).Width(36).Height(36).
-		Padding(0).Border(0, ui.Transparent).Background(ui.Transparent).
-		Justify(ui.Center).AlignItems(ui.Center).Cursor(ui.CursorPointer).Children(func() {
-		symbol(c, "sidebar.left", 24, appleMuted)
-	}).OnClick(func() { a.sidebarCollapsed = !a.sidebarCollapsed })
 }
 
 func (a *app) header(c *ui.Context) { a.musicHeader(c) }
@@ -406,7 +395,7 @@ func seasonLabel(s catalog.Series) string {
 	return "第 1 季"
 }
 func (a *app) detailView(c *ui.Context) {
-	ui.Column(c).Width(300).FillHeight().Background(appleCanvas).BorderWidth(0, 0, 0, 0).BorderColor(appleHairline).Padding(20, 16).Gap(12).Children(func() {
+	ui.Column(c).Width(300).FillHeight().Background(appleCanvas).BorderWidth(0, 0, 0, 0).BorderColor(appleHairline).Padding(max(float32(48), c.TitleBar().Height+8), 16, 20, 16).Gap(12).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "剧集详情").FontWeight(600).FontSize(17).TextColor(appleInk).Grow(1)
 			button(c, "").Label("收起").OnClick(func() {

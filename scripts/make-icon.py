@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the macOS icon from the user-supplied image, preserving its colors."""
+"""Create macOS and Windows icons from the user-supplied image."""
 from pathlib import Path
 import subprocess
 from PIL import Image, ImageDraw, ImageOps
@@ -12,6 +12,7 @@ mask = Image.new("L", image.size, 0)
 ImageDraw.Draw(mask).rounded_rectangle((0, 0, 1023, 1023), radius=220, fill=255)
 image.putalpha(mask)
 image.save(root / "packaging/app-icon.png")
+image.save(root / "packaging/AppIcon.ico", format="ICO", sizes=[(n, n) for n in (16, 24, 32, 48, 64, 128, 256)])
 image.resize((64, 64), Image.Resampling.LANCZOS).save(root / "packaging/sidebar-icon.png")
 iconset = root / "build/AppIcon.iconset"
 iconset.mkdir(parents=True, exist_ok=True)

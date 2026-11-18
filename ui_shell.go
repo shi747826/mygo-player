@@ -5,7 +5,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/egoist/mygo/ui"
 	"time"
 )
@@ -36,9 +35,8 @@ func (a *app) sourceSwitcher(c *ui.Context) {
 		b.Background(ui.Transparent)
 	}
 	b.Children(func() {
-		symbol(c, "square.stack", 15, appleMuted)
 		ui.Text(c, a.sourceDisplayName()).FontSize(12.5).FontWeight(600).Grow(1).MinWidth(0).SingleLine()
-		symbol(c, "chevron.up.chevron.down", 10, appleMuted)
+		symbol(c, "chevron.down", 10, appleMuted)
 	})
 	sel.Popup(func(panel ui.Element) {
 		panel.Margin(6, 0, 0, 0).Padding(5).Gap(1).MinWidth(204).Radius(12).Background(appleSurface).Border(.5, appleHairline).Shadow(0, 8, 24, -4, ui.RGBA(0, 0, 0, .2))
@@ -110,12 +108,7 @@ func (a *app) sidebarSearch(c *ui.Context) {
 }
 func (a *app) musicSidebar(c *ui.Context) {
 	ui.Column(c).Width(musicSidebarWidth).FillHeight().Padding(14).Gap(4).Background(appleCanvas).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Margin(0, 0, 10, 0).Children(func() {
-			appMark(c, 24)
-			ui.Text(c, "MyGo Player").FontSize(14).FontWeight(600).Grow(1)
-			a.sidebarToggle(c)
-		})
-		a.sourceSwitcher(c)
+		ui.Box(c).Height(max(float32(48), c.TitleBar().Height+8) - 14).Shrink(0)
 		if a.sourceHas("search") {
 			a.sidebarSearch(c)
 		}
@@ -156,48 +149,37 @@ func (a *app) musicSidebar(c *ui.Context) {
 		}
 	})
 }
-func (a *app) musicHeader(c *ui.Context) {
-	ui.Column(c).FillWidth().Padding(8, 28, 16, 28).Gap(10).Background(appleSurface).Children(func() {
-		ui.Row(c).FillWidth().Height(34).AlignItems(ui.Center).Gap(2).DragWindow().Children(func() {
-			if a.sidebarCollapsed {
-				a.sidebarToggle(c)
-			}
-			shellIconButton(c.Key("back"), "chevron.left", "返回").Disabled(len(a.navHistory) == 0 && !a.showPlayer && a.selected.ID == "").OnClick(a.goBack)
-			shellIconButton(c.Key("forward"), "chevron.right", "前进").Disabled(len(a.navForward) == 0).OnClick(a.goForward)
+
+// Window controls remain native; this transparent drag region reserves their
+// actual platform insets instead of adding a second application toolbar.
+func (a *app) windowControls(c *ui.Context) {
+	bar := c.TitleBar()
+	height := max(float32(40), bar.Height)
+	row := ui.Row(c.Key("window-controls")).Absolute().Top(0).Left(0).FillWidth().Height(height).AlignItems(ui.Center).PaddingStart(bar.Left + 8).PaddingEnd(bar.Right + 8).DragWindow()
+	row.Children(func() {
+		if bar.Right > 0 && bar.Left == 0 {
 			ui.Spacer(c)
-			if a.sidebarCollapsed {
-				ui.Box(c).Width(160).Children(func() { a.sourceSwitcher(c) })
-				ui.Box(c).Width(12)
-				ui.Box(c).Width(220).Children(func() { a.sidebarSearch(c) })
-			}
-			shellIconButton(c.Key("refresh"), "arrow.clockwise", "刷新").Disabled(a.busy).OnClick(func() {
-				if a.page == "搜索" {
-					a.query = a.searchedQuery
-				}
-				a.loadPage(a.page, false)
-			})
-		})
-		ui.Row(c).FillWidth().AlignItems(ui.End).Children(func() {
-			ui.Column(c).Grow(1).Gap(4).Children(func() {
-				title := a.page
-				if a.page == "插件" {
-					title = "插件与来源"
-				}
-				if a.page == "搜索" && a.searchedQuery != "" {
-					title = "搜索结果"
-				}
-				ui.Text(c, title).FontSize(30).FontWeight(700).TextColor(appleInk)
-				subtitle := a.sourceDisplayName()
-				switch a.page {
-				case "搜索":
-					subtitle = fmt.Sprintf("“%s” · %d 部短剧", a.searchedQuery, len(a.items))
-				case "收藏", "历史":
-					subtitle = fmt.Sprintf("%s · %d 部短剧", subtitle, len(a.items))
-				case "插件":
-					subtitle = "管理内容来源与启用状态"
-				}
-				ui.Text(c, subtitle).FontSize(12).TextColor(appleMuted).SingleLine()
-			})
-		})
+		}
+		width := float32(144)
+		if bar.Left > 0 {
+			width = max(float32(96), musicSidebarWidth-bar.Left-20)
+		}
+		ui.Box(c).Width(width).Children(func() { a.sourceSwitcher(c) })
+	})
+}
+
+// Page headings belong to the white content surface, without a toolbar or
+// source subtitle between the window edge and the catalog.
+func (a *app) musicHeader(c *ui.Context) {
+	top := max(float32(52), c.TitleBar().Height+12)
+	ui.Column(c).FillWidth().Padding(top, 28, 16, 28).Children(func() {
+		title := a.page
+		if a.page == "插件" {
+			title = "插件与来源"
+		}
+		if a.page == "搜索" && a.searchedQuery != "" {
+			title = "搜索结果"
+		}
+		ui.Text(c, title).FontSize(30).FontWeight(700).TextColor(appleInk)
 	})
 }

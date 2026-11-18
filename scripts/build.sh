@@ -6,7 +6,9 @@ GO_BIN=${GO_BIN:-go}
 if ! command -v "$GO_BIN" >/dev/null 2>&1; then
   if [ -x "$ROOT/../.tools/go/bin/go" ]; then GO_BIN="$ROOT/../.tools/go/bin/go"; else printf '%s\n' 'Install Go 1.27.3+ or set GO_BIN.' >&2; exit 1; fi
 fi
-mkdir -p build
+OUTPUT_DIR=${MYGO_PLAYER_OUTPUT_DIR:-"${HOME:?}/Desktop/MyGo Player 打包"}
+mkdir -p build "$OUTPUT_DIR"
+OUTPUT_DIR=$(CDPATH= cd -- "$OUTPUT_DIR" && pwd -P)
 CGO_ENABLED=0 "$GO_BIN" build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o build/mygo-player .
 if [ "$(uname -s)" = Darwin ]; then
   APP="$ROOT/build/MyGo Player.app"
@@ -30,7 +32,13 @@ if [ "$(uname -s)" = Darwin ]; then
   cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
   cp -R licenses "$APP/Contents/Resources/"
   if command -v codesign >/dev/null 2>&1; then codesign --force --deep --sign - "$APP"; fi
+  VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
+  ARCH=$(uname -m)
+  ZIP="$OUTPUT_DIR/mygo-player-$VERSION-macos-$ARCH.zip"
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
   printf 'Built: %s\n' "$APP"
+  printf 'Package: %s\n' "$ZIP"
 else
-  printf 'Built: %s/build/mygo-player\n' "$ROOT"
+  cp build/mygo-player "$OUTPUT_DIR/mygo-player"
+  printf 'Built: %s/mygo-player\n' "$OUTPUT_DIR"
 fi

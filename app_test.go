@@ -185,7 +185,7 @@ func TestApplyCalendarHintMarksUpcoming(t *testing.T) {
 	}
 }
 
-func TestSourceNavigationAndCollapsibleSidebar(t *testing.T) {
+func TestSourceNavigationWithoutApplicationChrome(t *testing.T) {
 	client, err := catalog.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,6 @@ func TestSourceNavigationAndCollapsibleSidebar(t *testing.T) {
 	a.page = "推荐"
 	for _, source := range []string{"third-source", "fourth-source"} {
 		attachUITestPlugin(t, a, plugins.Manifest{ID: source, Name: source, Version: "1", Capabilities: []string{"detail", "resolve"}})
-		a.sidebarCollapsed = false
 		tt := ui.NewTester(a.view, 1280, 820)
 		for _, label := range []string{"随时接着看", "收藏与进度保存在本机", "非官方客户端 · 首版", "匿名浏览", "· 本地收藏与续播"} {
 			if tt.HasText(label) {
@@ -207,23 +206,10 @@ func TestSourceNavigationAndCollapsibleSidebar(t *testing.T) {
 				t.Fatalf("%s unexpected visibility for %q", source, label)
 			}
 		}
-		if err := tt.Click("收起侧栏"); err != nil {
-			t.Fatal(err)
-		}
-		if !a.sidebarCollapsed {
-			t.Fatal("sidebar did not collapse")
-		}
-		if tt.HasText("MyGo Player") {
-			t.Fatal("brand must disappear when sidebar collapses")
-		}
-		if err := tt.Click("展开侧栏"); err != nil {
-			t.Fatal(err)
-		}
-		if a.sidebarCollapsed {
-			t.Fatal("sidebar did not expand")
-		}
-		if !tt.HasText("MyGo Player") {
-			t.Fatal("sidebar brand did not return")
+		for _, label := range []string{"MyGo Player", "收起侧栏", "展开侧栏", "前进", "刷新"} {
+			if tt.HasText(label) {
+				t.Fatalf("obsolete application chrome %q is visible", label)
+			}
 		}
 	}
 }

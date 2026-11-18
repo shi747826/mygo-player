@@ -19,7 +19,6 @@ func TestWindowFullscreenOnlyChangesLayout(t *testing.T) {
 	a.preparing = true
 	a.playMessage = "准备中"
 	a.selected = catalog.Series{ID: "example", Title: "示例剧"}
-	a.sidebarCollapsed = true
 	handler := a.playerControlHandler(nil)
 	handler(webplayer.ControlAction{Name: "windowFullscreen", Value: "true"})
 	if !a.windowFullscreen || a.fullscreenVideo {
@@ -33,7 +32,7 @@ func TestWindowFullscreenOnlyChangesLayout(t *testing.T) {
 		t.Fatal("window fullscreen must hide app chrome")
 	}
 	handler(webplayer.ControlAction{Name: "windowFullscreen", Value: "false"})
-	if a.windowFullscreen || !a.sidebarCollapsed || a.selected.ID != "example" {
+	if a.windowFullscreen || a.selected.ID != "example" {
 		t.Fatal("exit must preserve previous sidebar and detail state")
 	}
 	tt = ui.NewTester(a.view, 1280, 820)

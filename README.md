@@ -51,6 +51,8 @@ MYGO_PLAYER_BUNDLE_FFMPEG=/absolute/path/to/ffmpeg sh scripts/build.sh
 open 'build/MyGo Player.app'
 ```
 
+所有打包脚本默认把最终安装包/ZIP 输出到 `~/Desktop/MyGo Player 打包/`，中间构建文件保留在 `build/`。可通过 `MYGO_PLAYER_OUTPUT_DIR` 指定其他输出目录。Windows 脚本同时生成便携 ZIP 和安装程序（需要 NSIS），macOS 脚本生成应用及桌面目录中的 ZIP。
+
 构建只产出宿主，不拉取或编译插件。应用使用 ad-hoc 签名，未做 Developer ID 公证。FFmpeg 可选；宿主查找顺序为 `-ffmpeg`、程序同目录、`MYGO_PLAYER_FFMPEG`、PATH，并将找到的路径传给插件，供需要处理媒体的插件使用。
 
 ```sh
@@ -72,6 +74,8 @@ WEBVIEW2_BOOTSTRAPPER=/absolute/path/to/MicrosoftEdgeWebview2Setup.exe \
 MYGO_PLAYER_BUNDLE_FFMPEG=/absolute/path/to/windows-x64/ffmpeg.exe \
 sh scripts/build-windows.sh
 ```
+
+Windows 图标使用与 macOS 相同的应用图案，`packaging/AppIcon.ico` 包含 16–256 像素多尺寸图像。打包脚本通过固定版本 `github.com/akavel/rsrc@v0.10.2` 生成 `appicon_windows_amd64.syso`，将图标嵌入程序的资源 ID 1，供 MyGo 窗口和 Windows Shell 使用；首次构建需联网下载该工具。安装程序和卸载程序也使用相同图标。构建时会检查实际 EXE 的图标资源与 ICO 内容一致，缺失时中止打包。
 
 WebView2 引导程序来自 <https://go.microsoft.com/fwlink/p/?LinkId=2124703>。请使用 Windows x64 FFmpeg，来源与许可证见第三方声明。Windows GitHub 下载器使用 `HTTP_PROXY` / `HTTPS_PROXY` 并遵守 `NO_PROXY`；当前未读取 Windows 系统代理。
 

@@ -30,9 +30,7 @@ func TestLibraryNavigationBackForward(t *testing.T) {
 	if a.page != "历史" || len(a.navHistory) != 1 {
 		t.Fatal("visit did not enter history")
 	}
-	if err := tt.Click("返回"); err != nil {
-		t.Fatal(err)
-	}
+	tt.Key(ui.Cmd, ui.KeyBracketLeft)
 	if a.page != "收藏" || len(a.navForward) != 1 {
 		t.Fatal("back did not restore favorites")
 	}
@@ -72,21 +70,49 @@ func TestSourceMenuOpensManagement(t *testing.T) {
 	}
 }
 
-// Cmd+F focuses search even after the sidebar was hidden.
-func TestSearchShortcutRestoresSidebar(t *testing.T) {
+// Search stays in the sidebar, and Cmd+F focuses it at supported widths.
+func TestSearchShortcutFocusesSidebar(t *testing.T) {
 	for _, width := range []int{900, 1280} {
 		a := navigationTestApp(t)
-		a.sidebarCollapsed = true
 		tt := ui.NewTester(a.view, width, 820)
-		for _, label := range []string{"选择来源", "搜索短剧", "刷新"} {
+		for _, label := range []string{"选择来源", "搜索短剧"} {
 			r, ok := tt.Find(label)
 			if !ok || r.X < 0 || r.X+r.W > float32(width) {
 				t.Fatalf("collapsed header control %q outside %dpx window: %+v", label, width, r)
 			}
 		}
 		tt.Key(ui.Cmd, ui.KeyF)
-		if a.sidebarCollapsed || !tt.Focused("搜索短剧") {
+		if !tt.Focused("搜索短剧") {
 			t.Fatal("search shortcut did not focus the sidebar field")
+		}
+	}
+}
+
+// Native controls may occupy either corner; source selection must sit next to
+// them and remain clickable without covering the sidebar or detail controls.
+func TestIntegratedWindowControls(t *testing.T) {
+	for _, bar := range []ui.TitleBar{{Height: 40, Left: 86}, {Height: 40, Right: 138}, {Height: 32, Left: 100, Right: 46}} {
+		for _, width := range []int{900, 1280} {
+			a := navigationTestApp(t)
+			a.selected = catalog.Series{ID: "example", Title: "示例"}
+			tt := ui.NewTester(a.view, width, 820)
+			tt.SetTitleBar(bar)
+			r, ok := tt.Find("选择来源")
+			if !ok || r.X < bar.Left || r.X+r.W > float32(width)-bar.Right || r.Y < 0 || r.Y+r.H > max(float32(40), bar.Height) {
+				t.Fatalf("source overlaps native controls: bar=%+v width=%d source=%+v", bar, width, r)
+			}
+			if bar.Left > 0 && r.X+r.W > musicSidebarWidth {
+				t.Fatalf("source extends past sidebar: %+v", r)
+			}
+			if err := tt.Click("收起"); err != nil {
+				t.Fatalf("detail close covered: %v", err)
+			}
+			if err := tt.Click("选择来源"); err != nil {
+				t.Fatal(err)
+			}
+			if !tt.HasText("管理插件…") {
+				t.Fatal("source menu did not open")
+			}
 		}
 	}
 }

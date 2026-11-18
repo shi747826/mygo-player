@@ -37,7 +37,6 @@ type app struct {
 	accShelfCancel                            context.CancelFunc
 	hgSortSel                                 int
 	hgSort                                    string
-	sidebarCollapsed                          bool
 	win                                       *mygo.Window
 	ctx                                       context.Context
 	cancel                                    context.CancelFunc
