@@ -32,6 +32,16 @@ func (Mobile) PreparePlayback() (bool, error) {
 	return n > 0, err
 }
 
+// SetVideoFullscreen rotates the existing WebView without replacing its player.
+func (Mobile) SetVideoFullscreen(enabled bool) {
+	orientation := mygo.OrientationAny
+	if enabled {
+		orientation = mygo.OrientationLandscape
+	}
+	mygo.SetOrientations(orientation)
+	mygo.SystemBars.SetHidden(enabled)
+}
+
 func main() {
 	data := flag.String("data", "", "override private data directory for development")
 	flag.Parse()

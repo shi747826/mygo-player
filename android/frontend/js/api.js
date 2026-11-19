@@ -98,6 +98,10 @@
   window.MyGoApi = Object.freeze({
     ApiError: ApiError,
     preparePlayback: preparePlayback,
+    setVideoFullscreen: async function (enabled) {
+      var bridge = await waitForBridge();
+      await bridge.call('Mobile.SetVideoFullscreen', enabled);
+    },
     waitForBridge: waitForBridge,
     // Covers load as <img> subresources, so the proxy takes the session in the
     // URL. It also converts formats the WebView cannot decode.

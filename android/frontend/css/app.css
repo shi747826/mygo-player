@@ -2014,3 +2014,59 @@ body.player-open { overflow: hidden; }
   .pstage-wrap { transition: none; }
   .episode-overlay .sheet { animation: none; }
 }
+
+/* Clear screen keeps navigation and the episode dock at hand. */
+.player.is-clean .player-summary,
+.player.is-clean #playerFavorite,
+.player.is-clean .watch-fullscreen,
+.player.is-clean .player-backdrop,
+.player.is-clean .player-scrim { display: none; }
+.watch-fullscreen, .fullscreen-play {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transform: translateX(-50%);
+  color: #fff;
+  background: rgba(27, 29, 34, .85);
+}
+.watch-fullscreen {
+  top: calc(50% + var(--video-half-height, 0px) + 12px);
+  padding: 8px 13px;
+  border-radius: 9px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.watch-fullscreen .icon { width: 18px; height: 18px; }
+.fullscreen-play {
+  top: 50%;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.fullscreen-play .icon { width: 33px; height: 33px; }
+.fullscreen-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fullscreen-actions button {
+  min-width: 44px;
+  min-height: 40px;
+  padding: 0 10px;
+  color: #fff;
+  font-size: 14px;
+}
+.fullscreen-actions .icon { width: 23px; height: 23px; }
+.player.is-fullscreen { background: #000; }
+.player.is-fullscreen .player-summary,
+.player.is-fullscreen .pdock,
+.player.is-fullscreen .watch-fullscreen,
+.player.is-fullscreen .player-backdrop { display: none; }
+.player.is-fullscreen.controls-hidden .ptop,
+.player.is-fullscreen.controls-hidden .player-scrim,
+.player.is-fullscreen.controls-hidden .fullscreen-play { visibility: hidden; }
+.player.is-fullscreen .pstage-wrap .player-controls { bottom: calc(8px + var(--safe-bottom)); }
+.player.is-fullscreen.episode-sheet-open .pstage-wrap { bottom: 0; }
+.player.is-fullscreen.episode-sheet-open .player-controls,
+.player.is-fullscreen.episode-sheet-open .fullscreen-play { visibility: hidden; }

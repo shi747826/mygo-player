@@ -1245,7 +1245,7 @@
     dom.player.classList.toggle('episode-sheet-open', !!episodeMode);
     dom.sheet.setAttribute('aria-labelledby', episodeMode ? 'playerTitle' : 'sheetTitle');
     dom.openEpisodes.setAttribute('aria-expanded', String(!!episodeMode));
-    dom.dockEpisodes.setAttribute('aria-expanded', String(!!episodeMode));
+    dom.fullscreenEpisodes.setAttribute('aria-expanded', String(!!episodeMode));
     state.lastFocused = document.activeElement;
     if (!state.sheetOpen) {
       pushHistory('sheet');
@@ -1277,7 +1277,7 @@
     var episodeMode = dom.overlay.classList.contains('episode-overlay');
     dom.player.classList.remove('episode-sheet-open');
     dom.openEpisodes.setAttribute('aria-expanded', 'false');
-    dom.dockEpisodes.setAttribute('aria-expanded', 'false');
+    dom.fullscreenEpisodes.setAttribute('aria-expanded', 'false');
     if (episodeMode && dom.sheet.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       dom.overlay.classList.add('is-closing');
       sheetExit = dom.sheet.animate([
@@ -1339,6 +1339,10 @@
       if (action) action();
       return;
     }
+    if (player.fullscreen) {
+      setFullscreen(false);
+      return;
+    }
     if (player.open) closePlayerUI();
   }
 
@@ -1353,9 +1357,11 @@
 
   function scheduleControlsHide(delay) {
     clearControlsTimer();
-    if (!player.open || player.controlsHold || player.seeking || player.boosting) return;
+    if (!player.open || player.controlsHold || player.seeking || player.boosting ||
+        (player.fullscreen && dom.video.paused)) return;
     player.controlsTimer = window.setTimeout(function () {
-      if (!player.open || player.controlsHold || player.seeking || player.boosting) return;
+      if (!player.open || player.controlsHold || player.seeking || player.boosting ||
+        (player.fullscreen && dom.video.paused)) return;
       hideControls(true);
     }, delay || 3000);
   }
@@ -1568,11 +1574,51 @@
   }
 
   function updateLandscapeFit() {
-    if (!dom.player || !dom.video) return;
     var width = dom.video.videoWidth;
     var height = dom.video.videoHeight;
-    if (width > 0 && height > 0 && width > height) dom.player.classList.add('is-landscape');
-    else dom.player.classList.remove('is-landscape');
+    var landscape = width > height && height > 0;
+    dom.player.classList.toggle('is-landscape', landscape);
+    dom.watchFullscreen.hidden = !player.open || !landscape;
+    if (landscape) {
+      var fittedHalfHeight = dom.player.clientWidth * height / width / 2;
+      dom.watchFullscreen.style.setProperty('--video-half-height', fittedHalfHeight + 'px');
+    }
+  }
+
+  function setCleanScreen(enabled) {
+    dom.player.classList.toggle('is-clean', enabled);
+    dom.clearScreen.setAttribute('aria-pressed', String(enabled));
+    dom.clearScreen.setAttribute('aria-label', enabled ? '恢复控件' : '清屏');
+    setIcon(dom.clearScreen, enabled ? 'restore' : 'clean');
+  }
+
+  function syncFullscreenTransport() {
+    dom.fullscreenPlay.hidden = !player.fullscreen || !dom.video.paused || dom.video.readyState < 2 || player.mediaLoading || !!player.mediaError;
+  }
+
+  function setFullscreen(enabled) {
+    player.fullscreen = enabled;
+    dom.player.classList.toggle('is-fullscreen', enabled);
+    dom.fullscreenTitle.hidden = !enabled;
+    dom.playerTopEpisode.hidden = enabled;
+    dom.fullscreenActions.hidden = !enabled;
+    dom.playerBack.setAttribute('aria-label', enabled ? '退出全屏' : '返回');
+    renderPlayerMeta();
+    syncFullscreenTransport();
+    if (enabled) showControls(false);
+    else hideControls(true);
+    api.setVideoFullscreen(enabled).catch(function () {
+      if (enabled && player.fullscreen) {
+        requestExitFullscreen();
+        showToast('暂时无法切换横屏。');
+      }
+    });
+  }
+
+  function requestExitFullscreen() {
+    if (!player.fullscreen) return;
+    if (history.state && history.state.mygo === 'fullscreen') history.back();
+    else setFullscreen(false);
   }
 
   function openSeries(series, options) {
@@ -1611,8 +1657,8 @@
     if (library) player.favorite = !!library.favorites[series.id];
 
     resetSwipeState();
+    setCleanScreen(false);
     dom.player.hidden = false;
-    dom.player.classList.remove('is-landscape');
     dom.player.classList.add('controls-hidden');
     player.controlsHidden = true;
     player.controlsHold = false;
@@ -1711,6 +1757,7 @@
     dom.playerSource.textContent = player.sourceName || '来源';
     if (dom.playerTopEpisode) dom.playerTopEpisode.textContent = episode ? '第 ' + episodeNumber(episode, player.index) + ' 集' : '准备中';
     dom.playerTitle.textContent = player.series.title;
+    dom.fullscreenTitle.textContent = player.series.title + (episode ? ' · ' + episodeLabel(episode, player.index) : '');
     dom.playerSummaryTitle.textContent = player.series.title;
     var season = asInt(player.series.season);
     var total = player.episodes.length || asInt(player.series.episodes);
@@ -1750,7 +1797,8 @@
   function updateTransport() {
     var hasEpisodes = player.episodes.length > 0;
     dom.openEpisodes.disabled = !hasEpisodes;
-    dom.dockEpisodes.disabled = !hasEpisodes;
+    dom.fullscreenEpisodes.disabled = !hasEpisodes;
+    dom.fullscreenNext.disabled = !hasEpisodes || player.index >= player.episodes.length - 1;
     dom.episodeOpenLabel.textContent = hasEpisodes
       ? '选集 · 全 ' + player.episodes.length + ' 集'
       : '选集';
@@ -1799,7 +1847,8 @@
     player.autoPlayPending = false;
     player.pendingSeek = 0;
     player.suppressMediaError = false;
-    if (dom.player) dom.player.classList.remove('is-landscape');
+    dom.player.classList.remove('is-landscape');
+    dom.watchFullscreen.hidden = true;
   }
 
   function releaseSession(session, sourceId) {
@@ -2233,6 +2282,7 @@
     if (!player.open) return;
     flushProgress(true, true);
     player.closing = true;
+    if (player.fullscreen) setFullscreen(false);
     resetSwipeState();
     clearControlsTimer();
     player.controlsHold = false;
@@ -2274,11 +2324,12 @@
       requestCloseSheet();
       return;
     }
-    if (history.state && history.state.mygo === 'player') {
+    if (history.state && (history.state.mygo === 'player' || history.state.mygo === 'fullscreen')) {
       history.back();
       return;
     }
-    closePlayerUI();
+    if (player.fullscreen) setFullscreen(false);
+    else closePlayerUI();
   }
 
   function activateSource(source, announce) {
@@ -2427,14 +2478,33 @@
   function syncAppHeight() {
     var height = window.innerHeight || 0;
     if (height > 0) document.documentElement.style.setProperty('--app-h', height + 'px');
+    if (player.open) updateLandscapeFit();
   }
 
   function bindPlayerEvents() {
     dom.playerBack.addEventListener('click', requestClosePlayer);
+    dom.clearScreen.addEventListener('click', function () {
+      setCleanScreen(!dom.player.classList.contains('is-clean'));
+    });
+    dom.watchFullscreen.addEventListener('click', function () {
+      if (!player.open || player.fullscreen || dom.watchFullscreen.hidden) return;
+      pushHistory('fullscreen');
+      setFullscreen(true);
+      dom.playerBack.focus({ preventScroll: true });
+    });
+    dom.fullscreenPlay.addEventListener('click', function () {
+      togglePlayback();
+      showControls(false);
+    });
+    ['play', 'pause', 'canplay', 'ended'].forEach(function (event) {
+      dom.video.addEventListener(event, syncFullscreenTransport);
+    });
+    dom.video.addEventListener('resize', updateLandscapeFit);
     dom.playerFavorite.addEventListener('click', toggleFavorite);
     dom.openEpisodes.addEventListener('click', openEpisodeSheet);
     dom.openIntro.addEventListener('click', function () { showEpisodeSheet('intro'); });
-    if (dom.dockEpisodes) dom.dockEpisodes.addEventListener('click', openEpisodeSheet);
+    dom.fullscreenNext.addEventListener('click', function () { goRelative(1); });
+    dom.fullscreenEpisodes.addEventListener('click', openEpisodeSheet);
     Array.prototype.forEach.call(document.querySelectorAll('.ptab'), function (tab) {
       tab.addEventListener('click', function () {
         setPlayerTab(tab.getAttribute('data-ptab'), true);
@@ -2464,7 +2534,7 @@
         moved: false,
         boosted: false
       };
-      showControls(true);
+      if (!player.fullscreen) showControls(true);
       try { dom.playerGesture.setPointerCapture(event.pointerId); } catch (_error) { /* older webview */ }
       player.longPressTimer = window.setTimeout(function () {
         var gesture = player.gesture;
@@ -2489,7 +2559,7 @@
       if (!gesture.axis) {
         if (Math.abs(dy) > 4) gesture.axis = Math.abs(dy) >= Math.abs(dx) ? 'y' : 'x';
       }
-      if (gesture.axis !== 'y') return;
+      if (gesture.axis !== 'y' || player.fullscreen) return;
       event.preventDefault();
       var height = window.innerHeight || 844;
       var atStart = player.index <= 0 && dy > 0;
@@ -2511,7 +2581,7 @@
         boostEnd();
         return;
       }
-      if (gesture.moved && gesture.axis === 'y') {
+      if (gesture.moved && gesture.axis === 'y' && !player.fullscreen) {
         var dy = event.clientY - gesture.startY;
         var elapsed = Math.max(1, Date.now() - gesture.startTime);
         var velocity = dy / elapsed;
@@ -2534,11 +2604,17 @@
         scheduleControlsHide(3000);
         return;
       }
+      if (player.fullscreen) {
+        if (gesture.moved) return;
+        if (controlsVisible()) hideControls(true);
+        else showControls(false);
+        return;
+      }
       // A short, still press toggles playback and leaves the controls up
       // for a moment, so the progress bar is reachable with one tap.
       player.suppressClickUntil = Date.now() + 420;
       togglePlayback();
-      showPauseFlash(dom.video.paused);
+      if (!player.fullscreen) showPauseFlash(dom.video.paused);
       showControls(false);
       scheduleControlsHide(2600);
     }
@@ -2840,7 +2916,13 @@
       panelEpisodes: byId('panelEpisodes'),
       panelSeasons: byId('panelSeasons'),
       ppanels: document.querySelector('.ppanels'),
-      dockEpisodes: byId('dockEpisodes'),
+      clearScreen: byId('clearScreen'),
+      watchFullscreen: byId('watchFullscreen'),
+      fullscreenTitle: byId('fullscreenTitle'),
+      fullscreenPlay: byId('fullscreenPlay'),
+      fullscreenActions: byId('fullscreenActions'),
+      fullscreenNext: byId('fullscreenNext'),
+      fullscreenEpisodes: byId('fullscreenEpisodes'),
       playerTitle: byId('playerTitle'),
       playerEpisodeTitle: byId('playerEpisodeTitle'),
       playerDescription: byId('playerDescription'),
