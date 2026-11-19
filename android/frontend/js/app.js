@@ -44,6 +44,7 @@
   };
 
   var player = {
+    playbackSpeed: 1,
     open: false,
     sourceId: '',
     sourceName: '',
@@ -1415,7 +1416,7 @@
     player.stageOffset = 0;
     player.controlsHold = false;
     if (dom.video) {
-      try { dom.video.playbackRate = 1; } catch (_error) { /* ignore */ }
+      try { dom.video.playbackRate = player.playbackSpeed; } catch (_error) { /* ignore */ }
     }
     if (dom.playerStage) {
       dom.playerStage.classList.remove('is-dragging', 'is-snapping');
@@ -1527,7 +1528,7 @@
   function boostEnd() {
     if (!player.boosting) return;
     player.boosting = false;
-    try { dom.video.playbackRate = 1; } catch (_error) { /* ignore */ }
+    try { dom.video.playbackRate = player.playbackSpeed; } catch (_error) { /* ignore */ }
     dom.boostBadge.classList.remove('is-visible');
     window.setTimeout(function () {
       if (!player.boosting) dom.boostBadge.hidden = true;
@@ -2038,7 +2039,7 @@
     window.clearTimeout(player.longPressTimer);
     player.longPressTimer = 0;
     player.boosting = false;
-    try { if (dom.video) dom.video.playbackRate = 1; } catch (_error) { /* ignore */ }
+    try { if (dom.video) dom.video.playbackRate = player.playbackSpeed; } catch (_error) { /* ignore */ }
     if (dom.boostBadge) {
       dom.boostBadge.classList.remove('is-visible');
       dom.boostBadge.hidden = true;
@@ -2482,6 +2483,19 @@
   }
 
   function bindPlayerEvents() {
+    try {
+      var savedSpeed = window.localStorage.getItem('mygo.mobile.playbackSpeed');
+      if (Array.prototype.some.call(dom.playbackSpeed.options, function (option) { return option.value === savedSpeed; })) {
+        dom.playbackSpeed.value = savedSpeed;
+        player.playbackSpeed = Number(savedSpeed);
+      }
+    } catch (_error) { /* storage unavailable */ }
+    dom.playbackSpeed.addEventListener('change', function () {
+      player.playbackSpeed = Number(dom.playbackSpeed.value);
+      if (!player.boosting) dom.video.playbackRate = player.playbackSpeed;
+      try { window.localStorage.setItem('mygo.mobile.playbackSpeed', dom.playbackSpeed.value); } catch (_error) { /* storage unavailable */ }
+      if (player.fullscreen) showControls(false);
+    });
     dom.playerBack.addEventListener('click', requestClosePlayer);
     dom.clearScreen.addEventListener('click', function () {
       setCleanScreen(!dom.player.classList.contains('is-clean'));
@@ -2672,6 +2686,7 @@
     dom.seek.addEventListener('pointercancel', endSeek);
 
     dom.video.addEventListener('loadedmetadata', function () {
+      dom.video.playbackRate = player.boosting ? 2 : player.playbackSpeed;
       if (!player.open) return;
       updateLandscapeFit();
       var duration = dom.video.duration;
@@ -2921,6 +2936,7 @@
       fullscreenTitle: byId('fullscreenTitle'),
       fullscreenPlay: byId('fullscreenPlay'),
       fullscreenActions: byId('fullscreenActions'),
+      playbackSpeed: byId('playbackSpeed'),
       fullscreenNext: byId('fullscreenNext'),
       fullscreenEpisodes: byId('fullscreenEpisodes'),
       playerTitle: byId('playerTitle'),

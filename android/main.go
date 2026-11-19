@@ -99,7 +99,9 @@ func main() {
 			mygo.App.Quit()
 			return
 		}
-		win := mygo.NewWindow(mygo.WindowOptions{Title: "MyGo Player", Width: 390, Height: 844, MinWidth: 320, MinHeight: 480, URL: "/"})
+		// The Android WebView leaves room for the display cutout. Paint that
+		// native area black so it blends with landscape video letterboxing.
+		win := mygo.NewWindow(mygo.WindowOptions{Title: "MyGo Player", Width: 390, Height: 844, MinWidth: 320, MinHeight: 480, URL: "/", BackgroundColor: "#000000"})
 		win.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
 			// Keep remote pages out of the app WebView and its native bindings.
 			if !strings.HasPrefix(e.URL, "mygo://localhost/") && !strings.HasPrefix(e.URL, "https://mygo.localhost/") {
