@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 
@@ -60,7 +61,11 @@ func main() {
 			}
 		}
 		var err error
-		service, err = core.New(dir)
+		var proxy func(*http.Request) (*url.URL, error)
+		if runtime.GOOS == "android" {
+			proxy = localplayback.NewSystemProxy()
+		}
+		service, err = core.New(dir, proxy)
 		if err != nil {
 			log.Printf("Unable to open mobile data: %v", err)
 			mygo.App.Quit()

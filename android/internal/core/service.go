@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +45,16 @@ type Service struct {
 	closeOnce    sync.Once
 }
 
-func New(dir string) (*Service, error) { return NewWithRegistrations(dir, sourceapi.Registered()) }
+// New opens the registered sources and installs the optional platform proxy.
+func New(dir string, proxy func(*http.Request) (*url.URL, error)) (*Service, error) {
+	return newWithProxy(dir, sourceapi.Registered(), proxy)
+}
+
 func NewWithRegistrations(dir string, registrations []sourceapi.Registration) (*Service, error) {
+	return newWithProxy(dir, registrations, nil)
+}
+
+func newWithProxy(dir string, registrations []sourceapi.Registration, proxy func(*http.Request) (*url.URL, error)) (*Service, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -55,6 +64,11 @@ func NewWithRegistrations(dir string, registrations []sourceapi.Registration) (*
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Service{Token: hex.EncodeToString(token[:]), ctx: ctx, cancel: cancel, entries: map[string]entry{}, coverDir: filepath.Join(dir, "cache", "covers"), ready: map[string]*prefetchEntry{}, prefetching: map[string]*prefetchEntry{}, coverClient: &http.Client{Timeout: 25 * time.Second}}
+	if proxy != nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = proxy
+		s.coverClient.Transport = transport
+	}
 	for _, r := range registrations {
 		info := SourceInfo{Manifest: r.Manifest}
 		// Registered manifests are validated before reaching this filesystem path.
@@ -67,6 +81,11 @@ func NewWithRegistrations(dir string, registrations []sourceapi.Registration) (*
 			info.Error = err.Error()
 			s.sources = append(s.sources, info)
 			continue
+		}
+		if configurable, ok := src.(interface {
+			SetNetworkProxy(func(*http.Request) (*url.URL, error))
+		}); ok && proxy != nil {
+			configurable.SetNetworkProxy(proxy)
 		}
 		store, err := catalog.New(filepath.Join(dir, "library", r.Manifest.ID))
 		if err != nil {

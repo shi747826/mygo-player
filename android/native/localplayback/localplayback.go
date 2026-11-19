@@ -19,6 +19,10 @@ type Controller interface {
 	// returning the new path. Android can decode formats the Go side cannot,
 	// such as the HEIF covers some sources serve. Call it off the main thread.
 	ConvertCover(path string) (string, error)
+
+	// SystemProxy returns the Android proxy URL for the target, or an empty
+	// string for a direct connection. Selection may consult a PAC service.
+	SystemProxy(target string) (string, error)
 }
 
 // EnableLocalPlayback configures all currently loaded, trusted app WebViews.

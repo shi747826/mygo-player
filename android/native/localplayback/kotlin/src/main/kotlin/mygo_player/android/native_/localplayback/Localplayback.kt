@@ -47,6 +47,19 @@ private class LocalPlaybackController : Controller {
         return configured
     }
 
+    override fun systemProxy(target: String): String {
+        val uri = URI(target)
+        val proxy = java.net.ProxySelector.getDefault()?.select(uri)?.firstOrNull()
+            ?: return ""
+        val scheme = when (proxy.type()) {
+            java.net.Proxy.Type.HTTP -> "http"
+            java.net.Proxy.Type.SOCKS -> "socks5"
+            else -> return ""
+        }
+        val address = proxy.address() as? java.net.InetSocketAddress ?: return ""
+        return URI(scheme, null, address.hostString, address.port, null, null, null).toASCIIString()
+    }
+
     override fun convertCover(path: String): String {
         // Android decodes HEIF from 9.0 on; older devices simply cannot show
         // those covers, so the caller falls back to the placeholder.
