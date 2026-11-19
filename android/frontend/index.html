@@ -111,34 +111,13 @@
     </div>
   </div>
 
-  <div class="pinfo">
-    <div class="pinfo-head">
-      <img id="playerCover" class="pinfo-cover" alt="">
-      <div class="pinfo-copy">
-        <h1 id="playerTitle" class="pinfo-title"></h1>
-        <p id="playerSeasonLine" class="pinfo-sub"></p>
-      </div>
-      <span id="playerSource" class="pinfo-source"></span>
-    </div>
-
-    <div class="ptabs" role="tablist" aria-label="剧集信息">
-      <button type="button" class="ptab is-active" data-ptab="intro" role="tab" aria-selected="true">简介</button>
-      <button type="button" class="ptab" data-ptab="episodes" role="tab" aria-selected="false">选集</button>
-      <button type="button" class="ptab" data-ptab="seasons" role="tab" aria-selected="false">系列剧</button>
-    </div>
-
-    <div class="ppanels">
-      <div id="panelIntro" class="ppanel is-active" role="tabpanel">
-        <p id="playerDescription" class="pinfo-desc"></p>
-        <p id="playerEpisodeTitle" class="pinfo-episode"></p>
-      </div>
-      <div id="panelEpisodes" class="ppanel" role="tabpanel"></div>
-      <div id="panelSeasons" class="ppanel" role="tabpanel"></div>
-    </div>
+  <div class="player-summary">
+    <button type="button" id="openIntro" aria-haspopup="dialog"><strong id="playerSummaryTitle"></strong><span aria-hidden="true"> ›</span></button>
+    <p id="playerSummaryEpisode"></p>
   </div>
 
   <div class="pdock">
-    <button type="button" id="openEpisodes" class="pdock-main">
+    <button type="button" id="openEpisodes" class="pdock-main" aria-haspopup="dialog">
       <span id="episodeOpenLabel">选集</span>
       <svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>
     </button>
@@ -170,6 +149,34 @@
       </button>
     </header>
     <div id="sheetBody" class="sheet-body"></div>
+    <div id="episodeInfo" class="pinfo" hidden>
+      <div class="pinfo-head sheet-header">
+        <img id="playerCover" class="pinfo-cover" alt="">
+        <div class="pinfo-copy">
+          <h2 id="playerTitle" class="pinfo-title"></h2>
+          <p id="playerSeasonLine" class="pinfo-sub"></p>
+        </div>
+        <span id="playerSource" class="pinfo-source"></span>
+        <button type="button" id="episodeSheetClose" class="round-button sheet-close" aria-label="收起选集">
+          <svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
+      </div>
+
+      <div class="ptabs" role="tablist" aria-label="剧集信息">
+        <button type="button" class="ptab is-active" data-ptab="intro" role="tab" aria-selected="true">简介</button>
+        <button type="button" class="ptab" data-ptab="episodes" role="tab" aria-selected="false">选集</button>
+        <button type="button" class="ptab" data-ptab="seasons" role="tab" aria-selected="false">系列剧</button>
+      </div>
+
+      <div class="ppanels">
+        <div id="panelIntro" class="ppanel is-active" role="tabpanel">
+          <p id="playerDescription" class="pinfo-desc"></p>
+          <p id="playerEpisodeTitle" class="pinfo-episode"></p>
+        </div>
+        <div id="panelEpisodes" class="ppanel" role="tabpanel"></div>
+        <div id="panelSeasons" class="ppanel" role="tabpanel"></div>
+      </div>
+    </div>
   </section>
 </div>
 

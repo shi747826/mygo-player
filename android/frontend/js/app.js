@@ -1233,7 +1233,19 @@
     });
   }
 
-  function openSheet(title, kicker, buildBody) {
+  var sheetExit = null;
+
+  function openSheet(title, kicker, buildBody, episodeMode) {
+    if (sheetExit) sheetExit.cancel();
+    sheetExit = null;
+    dom.overlay.classList.remove('is-closing');
+    dom.overlay.classList.toggle('episode-overlay', !!episodeMode);
+    dom.episodeInfo.hidden = !episodeMode;
+    dom.sheetBody.hidden = !!episodeMode;
+    dom.player.classList.toggle('episode-sheet-open', !!episodeMode);
+    dom.sheet.setAttribute('aria-labelledby', episodeMode ? 'playerTitle' : 'sheetTitle');
+    dom.openEpisodes.setAttribute('aria-expanded', String(!!episodeMode));
+    dom.dockEpisodes.setAttribute('aria-expanded', String(!!episodeMode));
     state.lastFocused = document.activeElement;
     if (!state.sheetOpen) {
       pushHistory('sheet');
@@ -1257,20 +1269,38 @@
   function closeSheetUI() {
     if (!state.sheetOpen) return;
     state.sheetOpen = false;
+    var dragOffset = Math.max(0, dom.sheet.getBoundingClientRect().top - dom.overlay.getBoundingClientRect().bottom + dom.sheet.offsetHeight);
     player.sheetDrag = null;
     dom.sheet.classList.remove('is-dragging');
     dom.sheet.style.transition = '';
     dom.sheet.style.transform = '';
-    dom.overlay.hidden = true;
+    var episodeMode = dom.overlay.classList.contains('episode-overlay');
+    dom.player.classList.remove('episode-sheet-open');
+    dom.openEpisodes.setAttribute('aria-expanded', 'false');
+    dom.dockEpisodes.setAttribute('aria-expanded', 'false');
+    if (episodeMode && dom.sheet.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      dom.overlay.classList.add('is-closing');
+      sheetExit = dom.sheet.animate([
+        { transform: 'translateY(' + dragOffset + 'px)' },
+        { transform: 'translateY(100%)' }
+      ], { duration: 200, easing: 'ease-in', fill: 'forwards' });
+      sheetExit.onfinish = function () {
+        dom.overlay.hidden = true;
+        dom.overlay.classList.remove('is-closing');
+        sheetExit.cancel();
+        sheetExit = null;
+      };
+    } else {
+      dom.overlay.hidden = true;
+    }
     clear(dom.sheetBody);
     var target = state.lastFocused;
     state.lastFocused = null;
-    if (target && target.isConnected && !player.open) {
+    if (target && target.isConnected) {
       try { target.focus({ preventScroll: true }); } catch (_error) { /* ignore */ }
     }
     if (player.open) {
       player.controlsHold = false;
-      showControls(false);
     }
   }
 
@@ -1572,6 +1602,7 @@
     player.lastSaveAt = 0;
     player.prefetchedId = '';
     player.tab = 'intro';
+    player.range = null;
     player.seasons = null;
     player.seasonsLoading = false;
     player.seasonsError = '';
@@ -1680,6 +1711,7 @@
     dom.playerSource.textContent = player.sourceName || '来源';
     if (dom.playerTopEpisode) dom.playerTopEpisode.textContent = episode ? '第 ' + episodeNumber(episode, player.index) + ' 集' : '准备中';
     dom.playerTitle.textContent = player.series.title;
+    dom.playerSummaryTitle.textContent = player.series.title;
     var season = asInt(player.series.season);
     var total = player.episodes.length || asInt(player.series.episodes);
     if (dom.playerSeasonLine) {
@@ -1698,6 +1730,9 @@
     var description = player.series.description || player.series.release_note || '';
     dom.playerDescription.textContent = description;
     dom.playerDescription.hidden = !description;
+    dom.playerSummaryEpisode.textContent = episode
+      ? episodeLabel(episode, player.index) + (title && !sameAsNumber ? ' · ' + title : description ? ' · ' + description : '')
+      : '';
     dom.qualityBadge.textContent = player.quality || '';
     dom.qualityBadge.hidden = !player.quality;
     renderPreviews();
@@ -1714,10 +1749,10 @@
 
   function updateTransport() {
     var hasEpisodes = player.episodes.length > 0;
-    var episode = hasEpisodes ? player.episodes[player.index] : null;
     dom.openEpisodes.disabled = !hasEpisodes;
+    dom.dockEpisodes.disabled = !hasEpisodes;
     dom.episodeOpenLabel.textContent = hasEpisodes
-      ? '选集 · 已完结 · 全 ' + player.episodes.length + ' 集'
+      ? '选集 · 全 ' + player.episodes.length + ' 集'
       : '选集';
     dom.qualityBadge.textContent = player.quality || '';
     dom.qualityBadge.hidden = !player.quality;
@@ -2098,7 +2133,7 @@
           if (episodeIndex === player.index) cell.setAttribute('aria-current', 'true');
           cell.addEventListener('click', function () {
             if (episodeIndex === player.index) return;
-            switchEpisode(episodeIndex);
+            closeSheetWithAction(function () { switchEpisode(episodeIndex); });
           });
           grid.appendChild(cell);
         })(index);
@@ -2157,7 +2192,7 @@
       var play = el('button', 'season-play', '播放');
       play.type = 'button';
       play.addEventListener('click', function () {
-        openSeries(series, {});
+        closeSheetWithAction(function () { openSeries(series, {}); });
       });
       row.appendChild(play);
       dom.panelSeasons.appendChild(row);
@@ -2184,7 +2219,14 @@
 
   function openEpisodeSheet() {
     if (!player.open) return;
-    setPlayerTab('episodes', true);
+    showEpisodeSheet('episodes');
+  }
+
+  function showEpisodeSheet(tab) {
+    if (!player.open || state.sheetOpen) return;
+    player.range = null;
+    openSheet('选集', '', function () {}, true);
+    setPlayerTab(tab, true);
   }
 
   function closePlayerUI() {
@@ -2391,6 +2433,7 @@
     dom.playerBack.addEventListener('click', requestClosePlayer);
     dom.playerFavorite.addEventListener('click', toggleFavorite);
     dom.openEpisodes.addEventListener('click', openEpisodeSheet);
+    dom.openIntro.addEventListener('click', function () { showEpisodeSheet('intro'); });
     if (dom.dockEpisodes) dom.dockEpisodes.addEventListener('click', openEpisodeSheet);
     Array.prototype.forEach.call(document.querySelectorAll('.ptab'), function (tab) {
       tab.addEventListener('click', function () {
@@ -2686,8 +2729,7 @@
       var elapsed = Math.max(1, Date.now() - drag.startTime);
       var velocity = drag.offset / elapsed;
       dom.sheet.classList.remove('is-dragging');
-      if (drag.offset > 96 || (drag.offset > 44 && velocity > .55)) {
-        dom.sheet.style.transform = 'translate3d(0,' + Math.max(drag.offset, 160) + 'px,0)';
+      if (event.type !== 'pointercancel' && (drag.offset > 96 || (drag.offset > 44 && velocity > .55))) {
         requestCloseSheet();
         return;
       }
@@ -2710,6 +2752,7 @@
       button.addEventListener('click', function () { switchTab(button.getAttribute('data-tab')); });
     });
     dom.sheetClose.addEventListener('click', requestCloseSheet);
+    byId('episodeSheetClose').addEventListener('click', requestCloseSheet);
     dom.overlay.addEventListener('click', function (event) {
       if (event.target === dom.overlay) requestCloseSheet();
     });
@@ -2788,6 +2831,10 @@
       playerSource: byId('playerSource'),
       playerTopEpisode: byId('playerTopEpisode'),
       playerSeasonLine: byId('playerSeasonLine'),
+      playerSummaryTitle: byId('playerSummaryTitle'),
+      playerSummaryEpisode: byId('playerSummaryEpisode'),
+      openIntro: byId('openIntro'),
+      episodeInfo: byId('episodeInfo'),
       playerCover: byId('playerCover'),
       panelIntro: byId('panelIntro'),
       panelEpisodes: byId('panelEpisodes'),
