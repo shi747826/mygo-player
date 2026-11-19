@@ -115,6 +115,15 @@
         body: { source: source, method: method, params: params || {} }
       });
     },
+    // Prepares the next episode while the current one plays, so a swipe
+    // starts at once instead of waiting for the source.
+    prefetch: function (source, id, quality) {
+      if (!source || !id) return Promise.resolve(null);
+      return request('/api/prefetch', {
+        method: 'POST',
+        body: { source: source, params: { id: id, quality: quality || '' } }
+      });
+    },
     release: function (source, sessionId) {
       if (!source || !sessionId) return Promise.resolve(null);
       return request('/api/call', {

@@ -1570,6 +1570,11 @@
     player.returnFocus = document.activeElement;
     player.favoriteBusy = false;
     player.lastSaveAt = 0;
+    player.prefetchedId = '';
+    player.tab = 'intro';
+    player.seasons = null;
+    player.seasonsLoading = false;
+    player.seasonsError = '';
 
     var library = currentLibrary();
     if (library) player.favorite = !!library.favorites[series.id];
@@ -1589,6 +1594,7 @@
     dom.qualityBadge.hidden = true;
     clearMediaElement();
     renderPlayerMeta();
+    setPlayerTab('intro', true);
     updateFavoriteButton();
     updateTransport();
 
@@ -1672,8 +1678,18 @@
     if (!player.series) return;
     var episode = player.episodes[player.index];
     dom.playerSource.textContent = player.sourceName || '来源';
-    dom.playerEpisodeTag.textContent = episode ? episodeLabel(episode, player.index) : '准备中';
+    if (dom.playerTopEpisode) dom.playerTopEpisode.textContent = episode ? '第 ' + episodeNumber(episode, player.index) + ' 集' : '准备中';
     dom.playerTitle.textContent = player.series.title;
+    var season = asInt(player.series.season);
+    var total = player.episodes.length || asInt(player.series.episodes);
+    if (dom.playerSeasonLine) {
+      dom.playerSeasonLine.textContent = (season > 0 ? '第' + season + '季 · ' : '') + (total > 0 ? '全' + total + '集' : '');
+    }
+    if (dom.playerCover) {
+      var cover = safeHttpUrl(player.series.cover);
+      dom.playerCover.src = cover && api.coverUrl ? api.coverUrl(cover) : '';
+      dom.playerCover.alt = player.series.title;
+    }
     setPlayerBackdrop(player.series);
     var title = episode ? episodeTitle(episode, player.index) : '';
     var sameAsNumber = episode && (title === episodeLabel(episode, player.index) || title === '第' + episodeNumber(episode, player.index) + '集');
@@ -1701,7 +1717,7 @@
     var episode = hasEpisodes ? player.episodes[player.index] : null;
     dom.openEpisodes.disabled = !hasEpisodes;
     dom.episodeOpenLabel.textContent = hasEpisodes
-      ? '选集 · 第 ' + episodeNumber(episode, player.index) + '/' + player.episodes.length + ' 集'
+      ? '选集 · 已完结 · 全 ' + player.episodes.length + ' 集'
       : '选集';
     dom.qualityBadge.textContent = player.quality || '';
     dom.qualityBadge.hidden = !player.quality;
@@ -1861,7 +1877,17 @@
     showMediaLoading('正在加载视频…');
   }
 
+  function prefetchNextEpisode() {
+    if (!player.open || !player.sourceId) return;
+    var next = player.episodes[player.index + 1];
+    if (!next || !next.id) return;
+    if (player.prefetchedId === next.id) return;
+    player.prefetchedId = next.id;
+    api.prefetch(player.sourceId, next.id, player.quality).catch(function () { /* best effort */ });
+  }
+
   function attemptPlay() {
+    prefetchNextEpisode();
     var promise = dom.video.play();
     if (promise && typeof promise.catch === 'function') {
       promise.catch(function (error) {
@@ -1899,6 +1925,7 @@
   }
 
   function switchEpisode(index, options) {
+    player.prefetchedId = '';
     options = options || {};
     if (!player.open || index < 0 || index >= player.episodes.length) return;
     if (index === player.index) {
@@ -1914,6 +1941,7 @@
     player.mediaError = '';
     if (!options.fromSwipe) setStageOffset(0, false);
     renderPlayerMeta();
+    if (player.tab === 'episodes') renderEpisodePanel();
     updateFavoriteButton();
     updateTransport();
     showEpisodeFlash(index);
@@ -2005,72 +2033,158 @@
     }
   }
 
-  function openEpisodeSheet() {
-    if (!player.open || !player.episodes.length) return;
-    player.controlsHold = true;
-    hideControls(true);
-    var currentRange = Math.floor(player.index / RANGE_SIZE);
-    var range = currentRange;
-    var ranges = Math.ceil(player.episodes.length / RANGE_SIZE);
+  function setPlayerTab(name, resetScroll) {
+    player.tab = name;
+    var tabs = document.querySelectorAll('.ptab');
+    Array.prototype.forEach.call(tabs, function (tab) {
+      var active = tab.getAttribute('data-ptab') === name;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    [['intro', dom.panelIntro], ['episodes', dom.panelEpisodes], ['seasons', dom.panelSeasons]].forEach(function (pair) {
+      if (!pair[1]) return;
+      pair[1].classList.toggle('is-active', pair[0] === name);
+    });
+    if (resetScroll && dom.ppanels) dom.ppanels.scrollTop = 0;
+    if (name === 'episodes') renderEpisodePanel();
+    if (name === 'seasons') { renderSeasonPanel(); loadSeasons(); }
+  }
 
-    openSheet('选集', 'EPISODES', function (body) {
-      body.appendChild(el('p', 'sheet-sub', player.series.title + ' · 共 ' + player.episodes.length + ' 集'));
-      var tabs = el('div', 'range-tabs');
+  function renderEpisodePanel() {
+    if (!dom.panelEpisodes) return;
+    clear(dom.panelEpisodes);
+    if (!player.episodes.length) {
+      dom.panelEpisodes.appendChild(el('p', 'pinfo-empty', player.detailError ? '剧集加载失败，请重试。' : '正在读取剧集…'));
+      return;
+    }
+    var ranges = Math.ceil(player.episodes.length / RANGE_SIZE);
+    var currentRange = Math.floor(player.index / RANGE_SIZE);
+    if (typeof player.range !== 'number') player.range = currentRange;
+    if (player.range >= ranges) player.range = currentRange;
+    var range = player.range;
+    var tabs = el('div', 'range-tabs');
+    var grid = el('div', 'episode-grid');
+    dom.panelEpisodes.appendChild(tabs);
+    dom.panelEpisodes.appendChild(grid);
+
+    function draw() {
+      clear(tabs);
       for (var i = 0; i < ranges; i++) {
         (function (rangeIndex) {
-          var start = rangeIndex * RANGE_SIZE + 1;
-          var end = Math.min((rangeIndex + 1) * RANGE_SIZE, player.episodes.length);
-          var tab = el('button', 'range-tab' + (rangeIndex === range ? ' is-active' : ''), start + '–' + end);
+          var startNumber = rangeIndex * RANGE_SIZE + 1;
+          var endNumber = Math.min((rangeIndex + 1) * RANGE_SIZE, player.episodes.length);
+          var tab = el('button', 'range-tab' + (rangeIndex === range ? ' is-active' : ''), startNumber + '–' + endNumber);
           tab.type = 'button';
           tab.setAttribute('aria-pressed', rangeIndex === range ? 'true' : 'false');
           tab.addEventListener('click', function () {
             range = rangeIndex;
-            body.scrollTop = 0;
+            player.range = rangeIndex;
             draw();
+            if (dom.ppanels) dom.ppanels.scrollTop = 0;
           });
           tabs.appendChild(tab);
         })(i);
       }
-      body.appendChild(tabs);
-      var grid = el('div', 'episode-grid');
-      body.appendChild(grid);
-
-      function draw() {
-        Array.prototype.forEach.call(tabs.children, function (tab, index) {
-          tab.classList.toggle('is-active', index === range);
-          tab.setAttribute('aria-pressed', index === range ? 'true' : 'false');
-        });
-        clear(grid);
-        var start = range * RANGE_SIZE;
-        var end = Math.min(start + RANGE_SIZE, player.episodes.length);
-        for (var index = start; index < end; index++) {
-          (function (episodeIndex) {
-            var episode = player.episodes[episodeIndex];
-            var number = episodeNumber(episode, episodeIndex);
-            var cell = el('button', 'episode-cell' + (episodeIndex === player.index ? ' is-current' : ''), number);
-            cell.type = 'button';
-            cell.setAttribute('aria-label', episodeTitle(episode, episodeIndex));
-            if (episodeIndex === player.index) cell.setAttribute('aria-current', 'true');
-            cell.addEventListener('click', function () {
-              closeSheetWithAction(function () { switchEpisode(episodeIndex); });
-            });
-            grid.appendChild(cell);
-          })(index);
-        }
-        if (range === currentRange) {
-          window.requestAnimationFrame(function () {
-            var current = grid.querySelector('.episode-cell.is-current');
-            if (!current) return;
-            var cellRect = current.getBoundingClientRect();
-            var bodyRect = body.getBoundingClientRect();
-            if (cellRect.top < bodyRect.top + 54 || cellRect.bottom > bodyRect.bottom - 8) {
-              body.scrollTop += cellRect.top - bodyRect.top - body.clientHeight / 2 + cellRect.height / 2;
-            }
+      clear(grid);
+      var start = range * RANGE_SIZE;
+      var end = Math.min(start + RANGE_SIZE, player.episodes.length);
+      for (var index = start; index < end; index++) {
+        (function (episodeIndex) {
+          var episode = player.episodes[episodeIndex];
+          var number = episodeNumber(episode, episodeIndex);
+          var cell = el('button', 'episode-cell' + (episodeIndex === player.index ? ' is-current' : ''), number);
+          cell.type = 'button';
+          cell.setAttribute('aria-label', episodeTitle(episode, episodeIndex));
+          if (episodeIndex === player.index) cell.setAttribute('aria-current', 'true');
+          cell.addEventListener('click', function () {
+            if (episodeIndex === player.index) return;
+            switchEpisode(episodeIndex);
           });
-        }
+          grid.appendChild(cell);
+        })(index);
       }
-      draw();
+      var active = tabs.querySelector('.range-tab.is-active');
+      if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'center' });
+    }
+    draw();
+  }
+
+  function renderSeasonPanel() {
+    if (!dom.panelSeasons) return;
+    clear(dom.panelSeasons);
+    if (player.seasonsLoading) {
+      dom.panelSeasons.appendChild(el('p', 'pinfo-empty', '正在读取同系列剧集…'));
+      return;
+    }
+    if (player.seasonsError) {
+      var failed = el('div', 'pinfo-empty');
+      failed.appendChild(el('p', '', player.seasonsError));
+      var retry = el('button', 'season-play', '重试');
+      retry.type = 'button';
+      retry.addEventListener('click', function () {
+        player.seasons = null;
+        loadSeasons();
+      });
+      failed.appendChild(retry);
+      dom.panelSeasons.appendChild(failed);
+      return;
+    }
+    var seasons = player.seasons || [];
+    var others = seasons.filter(function (item) { return item && item.id && item.id !== player.series.id; });
+    if (!others.length) {
+      dom.panelSeasons.appendChild(el('p', 'pinfo-empty', seasons.length ? '没有其他季。' : '这个来源没有提供同系列剧集。'));
+      return;
+    }
+    others.forEach(function (series) {
+      var row = el('div', 'season-row');
+      var cover = safeHttpUrl(series.cover);
+      if (cover && api.coverUrl) {
+        var image = el('img');
+        image.src = api.coverUrl(cover);
+        image.alt = series.title;
+        image.loading = 'lazy';
+        row.appendChild(image);
+      } else {
+        var blank = el('div', 'season-cover-blank');
+        row.appendChild(blank);
+      }
+      var copy = el('div', 'season-copy');
+      copy.appendChild(el('div', 'season-name', series.title));
+      var season = asInt(series.season);
+      var episodes = asInt(series.episodes);
+      copy.appendChild(el('div', 'season-meta', (season > 0 ? '第' + season + '季' : '同系列') + (episodes > 0 ? ' · 全' + episodes + '集' : '')));
+      row.appendChild(copy);
+      var play = el('button', 'season-play', '播放');
+      play.type = 'button';
+      play.addEventListener('click', function () {
+        openSeries(series, {});
+      });
+      row.appendChild(play);
+      dom.panelSeasons.appendChild(row);
     });
+  }
+
+  async function loadSeasons() {
+    if (!player.open || !player.series) return;
+    if (player.seasons || player.seasonsLoading) return;
+    player.seasonsLoading = true;
+    player.seasonsError = '';
+    renderSeasonPanel();
+    try {
+      var payload = await api.call(player.sourceId, 'Seasons', { ID: player.series.id });
+      player.seasons = Array.isArray(payload) ? payload.map(normalizeSeries).filter(Boolean) : [];
+    } catch (error) {
+      if (error && error.name === 'AbortError') return;
+      player.seasonsError = errorText(error, '同系列剧集暂时无法加载。');
+    } finally {
+      player.seasonsLoading = false;
+      if (player.tab === 'seasons') renderSeasonPanel();
+    }
+  }
+
+  function openEpisodeSheet() {
+    if (!player.open) return;
+    setPlayerTab('episodes', true);
   }
 
   function closePlayerUI() {
@@ -2277,6 +2391,12 @@
     dom.playerBack.addEventListener('click', requestClosePlayer);
     dom.playerFavorite.addEventListener('click', toggleFavorite);
     dom.openEpisodes.addEventListener('click', openEpisodeSheet);
+    if (dom.dockEpisodes) dom.dockEpisodes.addEventListener('click', openEpisodeSheet);
+    Array.prototype.forEach.call(document.querySelectorAll('.ptab'), function (tab) {
+      tab.addEventListener('click', function () {
+        setPlayerTab(tab.getAttribute('data-ptab'), true);
+      });
+    });
     dom.mediaRetry.addEventListener('click', startPlayback);
     dom.playerDetailRetry.addEventListener('click', loadDetail);
 
@@ -2666,7 +2786,14 @@
       playerBack: byId('playerBack'),
       playerFavorite: byId('playerFavorite'),
       playerSource: byId('playerSource'),
-      playerEpisodeTag: byId('playerEpisodeTag'),
+      playerTopEpisode: byId('playerTopEpisode'),
+      playerSeasonLine: byId('playerSeasonLine'),
+      playerCover: byId('playerCover'),
+      panelIntro: byId('panelIntro'),
+      panelEpisodes: byId('panelEpisodes'),
+      panelSeasons: byId('panelSeasons'),
+      ppanels: document.querySelector('.ppanels'),
+      dockEpisodes: byId('dockEpisodes'),
       playerTitle: byId('playerTitle'),
       playerEpisodeTitle: byId('playerEpisodeTitle'),
       playerDescription: byId('playerDescription'),

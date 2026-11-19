@@ -35,6 +35,9 @@ type Service struct {
 	mu           sync.RWMutex
 	entries      map[string]entry
 	coverDir     string
+	prefetchMu   sync.Mutex
+	ready        map[string]*prefetchEntry
+	prefetching  map[string]*prefetchEntry
 	coverClient  *http.Client
 	convertCover func(string) (string, error)
 	sources      []SourceInfo
@@ -51,7 +54,7 @@ func NewWithRegistrations(dir string, registrations []sourceapi.Registration) (*
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &Service{Token: hex.EncodeToString(token[:]), ctx: ctx, cancel: cancel, entries: map[string]entry{}, coverDir: filepath.Join(dir, "cache", "covers"), coverClient: &http.Client{Timeout: 25 * time.Second}}
+	s := &Service{Token: hex.EncodeToString(token[:]), ctx: ctx, cancel: cancel, entries: map[string]entry{}, coverDir: filepath.Join(dir, "cache", "covers"), ready: map[string]*prefetchEntry{}, prefetching: map[string]*prefetchEntry{}, coverClient: &http.Client{Timeout: 25 * time.Second}}
 	for _, r := range registrations {
 		info := SourceInfo{Manifest: r.Manifest}
 		// Registered manifests are validated before reaching this filesystem path.
@@ -79,6 +82,7 @@ func NewWithRegistrations(dir string, registrations []sourceapi.Registration) (*
 }
 func (s *Service) Close() {
 	s.closeOnce.Do(func() {
+		s.releasePrefetched()
 		s.cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -143,6 +147,29 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"sources": sources, "runtime": "inprocess/mobile-v1", "version": "0.1.0"})
 		return
 	}
+	if r.URL.Path == "/api/prefetch" && r.Method == http.MethodPost {
+		var cmd command
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&cmd); err != nil {
+			fail(w, 400, errors.New("无效请求"))
+			return
+		}
+		var p struct {
+			ID      string `json:"id"`
+			Quality string `json:"quality"`
+		}
+		_ = json.Unmarshal(cmd.Params, &p)
+		if cmd.Source == "" || p.ID == "" {
+			fail(w, 400, errors.New("缺少剧集"))
+			return
+		}
+		if _, ok := s.entries[cmd.Source]; !ok {
+			fail(w, 404, errors.New("来源不可用"))
+			return
+		}
+		s.prefetch(cmd.Source, p.ID, p.Quality)
+		writeJSON(w, map[string]bool{"queued": true})
+		return
+	}
 	if r.URL.Path == "/api/library" && r.Method == http.MethodGet {
 		e, ok := s.entries[r.URL.Query().Get("source")]
 		if !ok {
@@ -204,7 +231,17 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if len(cmd.Params) == 0 {
 			cmd.Params = json.RawMessage(`{}`)
 		}
-		raw, err := e.source.Call(ctx, cmd.Method, cmd.Params)
+		var raw json.RawMessage
+		var err error
+		if cmd.Method == "Resolve" {
+			if cached, ok, perr := s.takePrefetched(ctx, cmd.Source, cmd.Params); ok {
+				raw, err = cached, perr
+			} else {
+				raw, err = e.source.Call(ctx, cmd.Method, cmd.Params)
+			}
+		} else {
+			raw, err = e.source.Call(ctx, cmd.Method, cmd.Params)
+		}
 		if ctx.Err() != nil {
 			// A source may finish Resolve just as the user swipes away. Release its
 			// session rather than leaving the proxy alive for an abandoned response.
