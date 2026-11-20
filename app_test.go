@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"image/png"
 	"math"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"mygo-player/internal/catalog"
 	"mygo-player/internal/plugins"
+	"mygo-player/pluginapi"
 )
 
 func TestResumeKeepsExactEpisodeAndPosition(t *testing.T) {
@@ -210,6 +213,25 @@ func TestSourceNavigationWithoutApplicationChrome(t *testing.T) {
 			if tt.HasText(label) {
 				t.Fatalf("obsolete application chrome %q is visible", label)
 			}
+		}
+	}
+}
+
+// Transient preparation failures retry once; access restrictions do not.
+func TestRetryablePlayback(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{errors.New("ffmpeg could not remux media"), true},
+		{pluginapi.ErrTransport, true},
+		{context.Canceled, false},
+		{context.DeadlineExceeded, false},
+		{pluginapi.ErrAnonymousLimited, false},
+		{pluginapi.ErrAuthRequired, false},
+	} {
+		if got := retryablePlayback(tc.err); got != tc.want {
+			t.Fatalf("retryablePlayback(%v) = %v, want %v", tc.err, got, tc.want)
 		}
 	}
 }

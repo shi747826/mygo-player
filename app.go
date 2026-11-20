@@ -72,6 +72,7 @@ type app struct {
 	qualityChosen                             bool
 	qualities                                 []string
 	autoplay, pinned, portrait                bool
+	switchingEpisode                          bool
 	fullscreenVideo                           bool
 	windowButtonsDark                         bool
 	windowFullscreen                          bool
@@ -624,7 +625,15 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 	}
 	a.detailID++
 	a.detailBusy = false
-	a.stopPlayer()
+	// A new episode in the same series reuses the mounted WebView so fullscreen
+	// survives and the previous frame stays visible until the next one decodes.
+	switching := a.player != nil && a.playingSeries.ID == s.ID
+	if switching {
+		a.beginEpisodeSwitch()
+	} else {
+		a.stopPlayer()
+	}
+	a.switchingEpisode = switching
 	a.showPlayer = true
 	a.canResetDevice = false
 	a.autoResetTried = false
@@ -645,8 +654,15 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 			return
 		}
 	}
-	a.preparing = true
-	a.playMessage = "正在准备视频…"
+	// While switching episodes the previous frame stays on screen; a loading
+	// overlay here would flash over the video on every automatic transition.
+	if switching {
+		a.preparing = false
+		a.playMessage = ""
+	} else {
+		a.preparing = true
+		a.playMessage = "正在准备视频…"
+	}
 	quality := a.quality
 	if quality == "自动" {
 		quality = ""
@@ -657,6 +673,18 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 	go func() {
 		defer cancel()
 		media, err := source.Resolve(ctx, ep.ID, quality)
+		if err != nil && ctx.Err() == nil && retryablePlayback(err) {
+			// Preparing the next episode can fail transiently (the source may
+			// still be finishing its previous media); one transparent retry
+			// avoids interrupting automatic playback.
+			select {
+			case <-time.After(900 * time.Millisecond):
+			case <-ctx.Done():
+			}
+			if ctx.Err() == nil {
+				media, err = source.Resolve(ctx, ep.ID, quality)
+			}
+		}
 		if err != nil {
 			a.playError(id, err)
 			return
@@ -672,25 +700,72 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 	}()
 }
 
+// beginEpisodeSwitch pauses the mounted player and forgets per-episode state
+// without destroying it; adoptMedia then swaps the media inside that WebView.
+func (a *app) beginEpisodeSwitch() {
+	if a.playCancel != nil {
+		a.playCancel()
+		a.playCancel = nil
+	}
+	a.saveProgress()
+	if a.player != nil {
+		a.player.Pause()
+	}
+	a.resumePending = false
+	a.observedPlaying = false
+	a.preparing = false
+	a.endedHandled = false
+	if a.win != nil {
+		time.AfterFunc(30*time.Second, func() {
+			a.win.Update(func() { a.switchingEpisode = false })
+		})
+	}
+}
+
+// retryablePlayback reports whether resolving the same episode once more can
+// plausibly succeed; access restrictions and cancelled work cannot.
+func retryablePlayback(err error) bool {
+	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) &&
+		!errors.Is(err, pluginapi.ErrAnonymousLimited) && !errors.Is(err, pluginapi.ErrAuthRequired) &&
+		!errors.Is(err, pluginapi.ErrContentUnavailable) && !errors.Is(err, pluginapi.ErrDRMProtected)
+}
+
 // All sources enter the same native playback, quality, controls and episode flow.
 func (a *app) adoptMedia(id int, prep *preparedEpisode, pos float64, playWhenReady bool) {
 	if a.closed || id != a.playID {
 		prep.close()
 		return
 	}
-	p, err := webplayer.OpenURLInWindow(a.win, prep.media.URL, a.playerChanged)
-	if err != nil {
-		prep.close()
-		a.preparing = false
-		a.playMessage = "系统无法打开视频，请检查媒体组件和解码支持。"
-		if a.smoke {
-			a.failSmoke("native video open failed")
+	switching := a.switchingEpisode && a.player != nil
+	var p *webplayer.Player
+	if switching {
+		p = a.player
+		if !p.SwitchSource(prep.media.URL, time.Duration(pos*float64(time.Second))) {
+			switching = false
+			p = nil
 		}
-		return
 	}
+	if !switching {
+		var err error
+		p, err = webplayer.OpenURLInWindow(a.win, prep.media.URL, a.playerChanged)
+		if err != nil {
+			prep.close()
+			a.preparing = false
+			a.playMessage = "系统无法打开视频，请检查媒体组件和解码支持。"
+			if a.smoke {
+				a.failSmoke("native video open failed")
+			}
+			return
+		}
+		a.playerFocusPending = true
+	}
+	previous := a.activeMedia
 	a.activeMedia = prep
+	if switching && previous != nil && previous != prep {
+		// The previous video layer stays until the crossfade completes.
+		time.AfterFunc(20*time.Second, previous.close)
+	}
 	a.player = p
-	a.playerFocusPending = true
 	a.qualities = []string{"自动"}
 	for _, q := range prep.media.Qualities {
 		if q != "" && !contains(a.qualities, q) {
@@ -969,6 +1044,7 @@ func seekAcknowledged(pos, target float64) bool {
 }
 func (a *app) stopPlayer() {
 	a.playerFocusPending = false
+	a.switchingEpisode = false
 	if a.playCancel != nil {
 		a.playCancel()
 		a.playCancel = nil
@@ -1142,10 +1218,13 @@ func (a *app) advancePlayback() {
 			return
 		}
 	}
+	if a.switchingEpisode && !p.Ended() && p.Playing() {
+		a.switchingEpisode = false
+	}
 	if !p.Ended() && p.Playing() {
 		a.endedHandled = false
 	}
-	if p.Ended() && !a.endedHandled {
+	if p.Ended() && !a.endedHandled && !a.switchingEpisode {
 		a.endedHandled = true
 		a.saveProgress()
 		if a.autoplay {

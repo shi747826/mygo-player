@@ -35,7 +35,7 @@ func TestHTMLSourceEscaping(t *testing.T) {
 	if !strings.Contains(html, "const source="+string(encoded)) {
 		t.Fatal("source was not encoded as JSON")
 	}
-	for _, part := range []string{"playsinline preload", "if(wantPlay)void play()", "wantPlay=false;video.pause()", "setInterval(report,500)", "video.muted=true", "自动播放被阻止", "window.playerCommand", "currentTime", "duration", "readyState"} {
+	for _, part := range []string{"playsinline preload", "if(wantPlay)void play(video)", "wantPlay=false;video.pause()", "setInterval(report,500)", "el.muted=true", "自动播放被阻止", "window.playerCommand", "window.playerLoad", "video.after(next)", "next.addEventListener('loadeddata'", "currentTime", "duration", "readyState"} {
 		if !strings.Contains(html, part) {
 			t.Fatalf("missing %s", part)
 		}

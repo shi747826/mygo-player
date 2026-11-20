@@ -149,6 +149,24 @@ type ControlEpisode struct {
 	Number int    `json:"number"`
 }
 
+// SwitchSource replaces the playing media without replacing the WebView, so a
+// fullscreen window keeps its state and the previous frame stays visible until
+// the new video has decoded its first frame.
+func (p *Player) SwitchSource(rawURL string, start time.Duration) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+		return false
+	}
+	if p.closed.Load() {
+		return false
+	}
+	if start < 0 {
+		start = 0
+	}
+	p.enqueue("window.playerLoad(" + strconv.Quote(rawURL) + "," + strconv.FormatFloat(start.Seconds(), 'f', -1, 64) + ")")
+	return true
+}
+
 // ConfigureControls updates the HTML UI only when app-owned options change.
 func (p *Player) ConfigureControls(config ControlConfig, handler func(ControlAction)) {
 	p.onControl = handler
