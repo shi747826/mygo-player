@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -57,6 +58,8 @@ func (a *app) checkPlayerUpdate() {
 			switch {
 			case errors.Is(err, mygo.ErrUpdatesDisabled):
 				state.message = "当前版本或安装位置不支持应用内更新。请从 GitHub Releases 安装正式版，并确认安装位置可写。"
+			case err != nil && (strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403")):
+				state.message = "读取 GitHub 发布信息失败。私有仓库需要先安装并登录 GitHub CLI，或设置 GH_TOKEN。"
 			case err != nil:
 				state.message = "检查播放器更新失败 · " + err.Error()
 			case update == nil:
@@ -66,6 +69,27 @@ func (a *app) checkPlayerUpdate() {
 			}
 		})
 	}()
+}
+
+// checkPlayerUpdateOnLaunch looks for a newer release without interrupting the
+// user; failures stay silent and the update page still offers a manual check.
+func (a *app) checkPlayerUpdateOnLaunch() {
+	if a.win == nil || a.closed || !mygo.Updater.Enabled() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Second)
+	defer cancel()
+	update, err := mygo.Updater.Check(ctx)
+	if err != nil || update == nil {
+		return
+	}
+	a.win.Update(func() {
+		if a.closed || a.playerUpdate.available != nil || a.playerUpdate.installed {
+			return
+		}
+		a.playerUpdate.available = update
+		a.playerUpdate.message = "发现新版本 " + update.Version + "，可在这里更新。"
+	})
 }
 
 func (a *app) installPlayerUpdate() {

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 version=$1
-printf '%s' "-X github.com/egoist/mygo.packageVersion=$version -X github.com/egoist/mygo.packageIdentifier=dev.local.mygo-player"
+printf '%s' "-X github.com/egoist/mygo.packageVersion=$version -X github.com/egoist/mygo.packageIdentifier=dev.local.mygo-player -X github.com/egoist/mygo.production=1"
 if [ -n "${MYGO_PLAYER_UPDATE_PUBLIC_KEY:-}" ]; then
   case "$MYGO_PLAYER_UPDATE_PUBLIC_KEY" in
     *[!A-Za-z0-9/+=]*) printf '\nInvalid desktop update public key.\n' >&2; exit 1 ;;
