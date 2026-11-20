@@ -97,8 +97,8 @@ jobs:
             ditto -x -k "$archive" "$RUNNER_TEMP/verify-release"
             app="$RUNNER_TEMP/verify-release/MyGo Player.app"
             codesign --verify --deep --strict "$app"
-            lipo -verify_arch arm64 "$app/Contents/MacOS/mygo-player"
-            lipo -verify_arch arm64 "$app/Contents/MacOS/ffmpeg"
+            lipo "$app/Contents/MacOS/mygo-player" -verify_arch arm64
+            lipo "$app/Contents/MacOS/ffmpeg" -verify_arch arm64
             test -f "$app/Contents/Resources/LICENSE"
             test -f "$app/Contents/Resources/THIRD_PARTY_NOTICES.md"
             test -d "$app/Contents/Resources/licenses"
