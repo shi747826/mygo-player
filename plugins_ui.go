@@ -234,7 +234,7 @@ func (a *app) changePlugins(work func() error, message string) {
 			case errors.Is(err, context.Canceled):
 				a.pluginMessage = "已取消安装，可重试或安装本地 ZIP"
 			case updating && errors.Is(err, context.DeadlineExceeded):
-				a.pluginMessage = "插件更新超时，可重试或选择新版 ZIP"
+				a.pluginMessage = "插件更新超时。若网络需要代理，请开启系统代理或设置 HTTPS_PROXY 后重试，也可选择新版 ZIP"
 			case errors.Is(err, context.DeadlineExceeded):
 				a.pluginMessage = "连接 GitHub 超时，请检查系统代理后重试，或下载插件 ZIP 后本地安装"
 			case err != nil:

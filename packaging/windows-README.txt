@@ -20,7 +20,7 @@ MicrosoftEdgeWebview2Setup.exe 安装或修复 WebView2（需要联网）。
 来源插件在应用「插件」页面通过 GitHub 链接或 ZIP 单独安装；请选择
 Windows amd64 安装包。私有仓库需要具备访问权限，并在本机使用
 GitHub CLI 执行 gh auth login，或设置 GH_TOKEN / GITHUB_TOKEN。
-Windows 下载器遵守 HTTP_PROXY / HTTPS_PROXY 和 NO_PROXY 环境变量。
+Windows 下载器使用系统代理（Internet 选项），也遵守 HTTP_PROXY / HTTPS_PROXY 和 NO_PROXY 环境变量。
 
 用户数据默认位于 %APPDATA%\mygo-player，卸载应用不会删除用户资料。
 

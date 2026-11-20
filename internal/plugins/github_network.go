@@ -68,6 +68,9 @@ func githubProxy(req *http.Request) (*url.URL, error) {
 	if runtime.GOOS == "darwin" {
 		return githubMacProxy(req.URL.Scheme, githubSystemProxyValues(req.Context())), nil
 	}
+	if runtime.GOOS == "windows" && req.URL.Scheme == "https" {
+		return windowsSystemProxy(req.Context()), nil
+	}
 	return nil, nil
 }
 

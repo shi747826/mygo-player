@@ -2,7 +2,7 @@ Unicode True
 !include "MUI2.nsh"
 !include "x64.nsh"
 !ifndef APP_VERSION
-  !define APP_VERSION "0.3.14"
+  !define APP_VERSION "0.3.15"
 !endif
 !ifndef APP_DIR
   !define APP_DIR "../build/win"
@@ -64,6 +64,10 @@ Function .onInit
     SetErrorLevel 1
     Quit
   ${EndIf}
+  ; D: is the requested default; fall back to the user profile when absent.
+  IfFileExists "D:\*.*" keepDefaultDir
+    StrCpy $INSTDIR "$LOCALAPPDATA\Programs\MyGoPlayer"
+  keepDefaultDir:
 FunctionEnd
 
 ; Match the runtime lookup in MyGo's Windows backend, including per-user installs.
