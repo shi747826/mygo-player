@@ -107,6 +107,7 @@ func main() {
 		} else {
 			app.loadPage("推荐", false)
 		}
+		go app.checkPlayerUpdateOnLaunch()
 		if *smoke {
 			go func() {
 				timer := time.NewTimer(300 * time.Second)
