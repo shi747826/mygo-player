@@ -91,8 +91,8 @@ func TestSearchShortcutFocusesSidebar(t *testing.T) {
 	}
 }
 
-// Native controls may occupy either corner; source selection must sit next to
-// them and remain clickable without covering the sidebar or detail controls.
+// Source selection and the sidebar toggle stay on the left and clear the
+// native controls on either platform.
 func TestIntegratedWindowControls(t *testing.T) {
 	for _, bar := range []ui.TitleBar{{Height: 40, Left: 86}, {Height: 40, Right: 138}, {Height: 32, Left: 100, Right: 46}} {
 		for _, width := range []int{900, 1280} {
@@ -111,11 +111,8 @@ func TestIntegratedWindowControls(t *testing.T) {
 			if r.W > 100 {
 				t.Fatalf("source switcher too wide: %+v", r)
 			}
-			if bar.Left > 0 && toggle.X+toggle.W > musicSidebarWidth {
-				t.Fatalf("toggle extends beyond sidebar: %+v", toggle)
-			}
-			if bar.Left > 0 && r.X+r.W > musicSidebarWidth {
-				t.Fatalf("source extends past sidebar: %+v", r)
+			if toggle.X+toggle.W > musicSidebarWidth || r.X+r.W > musicSidebarWidth {
+				t.Fatalf("controls extend past the left sidebar: bar=%+v source=%+v toggle=%+v", bar, r, toggle)
 			}
 			if err := tt.Click("收起"); err != nil {
 				t.Fatalf("detail close covered: %v", err)

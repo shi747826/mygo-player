@@ -116,7 +116,7 @@ func navIcon(name string) string {
 	case "预约":
 		return "calendar"
 	}
-	return "circle"
+	return "list.bullet"
 }
 func navTextColor(active bool) ui.Color {
 	if active {

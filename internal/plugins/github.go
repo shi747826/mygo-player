@@ -237,6 +237,16 @@ func (g githubInstaller) install(ctx context.Context, m *Manager, input string) 
 }
 
 func (g githubInstaller) installWithProgress(ctx context.Context, m *Manager, input string, progress func(string)) (Manifest, error) {
+	link, err := parseGitHubLink(input)
+	if err != nil {
+		return Manifest{}, err
+	}
+	return g.withPackage(ctx, link, false, progress, func(ctx context.Context, path string) (Manifest, error) {
+		return m.installPackage(ctx, path, link.updateSource())
+	})
+}
+
+func (g githubInstaller) withPackage(ctx context.Context, link githubLink, preferAsset bool, progress func(string), apply func(context.Context, string) (Manifest, error)) (Manifest, error) {
 	var zero Manifest
 	report := func(stage string) error {
 		if err := ctx.Err(); err != nil {
@@ -246,10 +256,6 @@ func (g githubInstaller) installWithProgress(ctx context.Context, m *Manager, in
 			progress(stage)
 		}
 		return ctx.Err()
-	}
-	link, err := parseGitHubLink(input)
-	if err != nil {
-		return zero, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
@@ -281,6 +287,18 @@ func (g githubInstaller) installWithProgress(ctx context.Context, m *Manager, in
 	var release githubRelease
 	if err = json.Unmarshal(raw, &release); err != nil {
 		return zero, errors.New("plugin: invalid GitHub release response")
+	}
+	if preferAsset && link.asset != "" {
+		found := false
+		for _, asset := range release.Assets {
+			if asset.Name == link.asset {
+				found = true
+				break
+			}
+		}
+		if !found {
+			link.asset = ""
+		}
 	}
 	var selected *githubAsset
 	for i := range release.Assets {
@@ -351,7 +369,7 @@ func (g githubInstaller) installWithProgress(ctx context.Context, m *Manager, in
 	if err := report("github:install"); err != nil {
 		return zero, err
 	}
-	manifest, err := m.Install(path)
+	manifest, err := apply(ctx, path)
 	if err == nil && progress != nil {
 		// Installation has committed: completion must still be reported if the
 		// caller cancels immediately after the last pre-install check.

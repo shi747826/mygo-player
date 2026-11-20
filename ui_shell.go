@@ -156,9 +156,6 @@ func (a *app) windowControls(c *ui.Context) {
 	height := max(float32(40), bar.Height)
 	row := ui.Row(c.Key("window-controls")).Absolute().Top(0).Left(0).FillWidth().Height(height).AlignItems(ui.Center).PaddingStart(bar.Left + 8).PaddingEnd(bar.Right + 8).DragWindow()
 	row.Children(func() {
-		if bar.Right > 0 && bar.Left == 0 {
-			ui.Spacer(c)
-		}
 		width := float32(100)
 		if bar.Left > 0 {
 			width = min(width, max(float32(64), musicSidebarWidth-bar.Left-48))

@@ -56,8 +56,17 @@ func (m Manifest) Has(capability string) bool {
 
 var slug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
-func validRelative(p string) bool {
-	return p != "" && !strings.Contains(p, "\\") && !filepath.IsAbs(p) && filepath.VolumeName(p) == "" && filepath.Clean(p) == p && p != "." && p != ".." && !strings.HasPrefix(p, ".."+string(filepath.Separator))
+// Plugin manifests and ZIP entries use slash-separated relative paths.
+func localPluginPath(p string) (string, error) {
+	if p == "." || strings.ContainsAny(p, "\\:\x00") {
+		return "", fs.ErrInvalid
+	}
+	for _, part := range strings.Split(p, "/") {
+		if strings.TrimRight(part, " .") != part {
+			return "", fs.ErrInvalid
+		}
+	}
+	return filepath.Localize(p)
 }
 func ParseManifest(raw []byte) (Manifest, error) {
 	var m Manifest
@@ -78,7 +87,7 @@ func (m Manifest) Validate() error {
 	if !slug.MatchString(m.ID) || len(m.ID) > 128 || strings.TrimSpace(m.Name) == "" || strings.TrimSpace(m.Version) == "" {
 		return errors.New("invalid plugin identity")
 	}
-	if m.Runtime.Type != "exec" || m.Runtime.ProtocolVersion != ProtocolVersion || !validRelative(m.Runtime.Executable) {
+	if _, err := localPluginPath(m.Runtime.Executable); m.Runtime.Type != "exec" || m.Runtime.ProtocolVersion != ProtocolVersion || err != nil {
 		return errors.New("unsupported plugin runtime")
 	}
 	allowed := map[string]bool{"detail": true, "resolve": true, "discover": true, "search": true, "rank": true, "seasons": true, "covers": true, "calendar": true, "resetDevice": true, "danmaku": true, "account": true, "favoritesSync": true, "reservations": true}
@@ -130,11 +139,12 @@ func readLimited(path string, max int64) ([]byte, error) {
 
 // safeExecutable rejects symlinks in every path component.
 func safeExecutable(root, relative string) (string, error) {
-	if !validRelative(relative) {
+	local, err := localPluginPath(relative)
+	if err != nil {
 		return "", ErrProtocol
 	}
 	p := root
-	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+	for _, part := range strings.Split(local, string(filepath.Separator)) {
 		p = filepath.Join(p, part)
 		st, err := os.Lstat(p)
 		if err != nil {
@@ -202,6 +212,10 @@ func bundlePaths() []string {
 func (m *Manager) Reload() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.reloadLocked()
+}
+
+func (m *Manager) reloadLocked() error {
 	manifests := map[string]Manifest{}
 	paths := map[string]string{}
 	bundled := map[string]bool{}
@@ -361,7 +375,51 @@ const MaxPackageSize int64 = 256 << 20
 
 // Install copies a directory or ZIP into the user package directory. It never runs or enables it.
 func (m *Manager) Install(path string) (Manifest, error) {
+	return m.installPackage(context.Background(), path, "")
+}
+
+func (m *Manager) installPackage(ctx context.Context, path, source string) (Manifest, error) {
+	return m.stagePackage(ctx, path, func(stage string, v Manifest) error {
+		if err := writeUpdateSource(stage, source); err != nil {
+			return err
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		dest := filepath.Join(m.dir, "plugins", v.ID)
+		if _, err := os.Lstat(dest); err == nil {
+			return errors.New("plugin already installed")
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := os.Rename(stage, dest); err != nil {
+			return err
+		}
+		old, present := m.enabled[v.ID]
+		m.enabled[v.ID] = false
+		err := m.reloadLocked()
+		if err == nil {
+			err = m.saveEnabled()
+		}
+		if err == nil {
+			return nil
+		}
+		if present {
+			m.enabled[v.ID] = old
+		} else {
+			delete(m.enabled, v.ID)
+		}
+		return errors.Join(err, os.Rename(dest, stage), m.reloadLocked())
+	})
+}
+
+func (m *Manager) stagePackage(ctx context.Context, path string, commit func(string, Manifest) error) (Manifest, error) {
 	var zero Manifest
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
 	root := filepath.Join(m.dir, "plugins")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return zero, err
@@ -378,18 +436,26 @@ func (m *Manager) Install(path string) (Manifest, error) {
 	var total int64
 	entries := 0
 	copyFile := func(rel string, mode fs.FileMode, r io.Reader, size int64) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		first, _, _ := strings.Cut(rel, "/")
+		if strings.EqualFold(first, pluginUpdateSourceFile) {
+			return errors.New("plugin package contains reserved update metadata")
+		}
 		entries++
 		if entries > 10000 {
 			return errors.New("too many plugin package entries")
 		}
-		if !validRelative(rel) || mode&os.ModeSymlink != 0 || !mode.IsRegular() {
-			return errors.New("unsafe plugin package entry")
+		local, err := localPluginPath(rel)
+		if err != nil || !mode.IsRegular() {
+			return fmt.Errorf("unsafe plugin package entry %q", rel)
 		}
 		if size < 0 || size > MaxPackageSize-total {
 			return errors.New("plugin package exceeds size limit")
 		}
 		total += size
-		dest := filepath.Join(stage, rel)
+		dest := filepath.Join(stage, local)
 		if err := os.MkdirAll(filepath.Dir(dest), 0700); err != nil {
 			return err
 		}
@@ -434,7 +500,7 @@ func (m *Manager) Install(path string) (Manifest, error) {
 				return e
 			}
 			defer f.Close()
-			return copyFile(rel, info.Mode(), f, info.Size())
+			return copyFile(filepath.ToSlash(rel), info.Mode(), f, info.Size())
 		})
 	} else if st.Mode().IsRegular() {
 		z, e := zip.OpenReader(path)
@@ -446,13 +512,13 @@ func (m *Manager) Install(path string) (Manifest, error) {
 			return zero, errors.New("too many plugin package entries")
 		}
 		for _, f := range z.File {
-			rel := filepath.FromSlash(f.Name)
+			rel := f.Name
 			if f.Mode()&os.ModeSymlink != 0 {
 				err = errors.New("plugin symlink is forbidden")
 				break
 			}
 			if f.FileInfo().IsDir() {
-				if !validRelative(strings.TrimSuffix(rel, string(filepath.Separator))) {
+				if _, pathErr := localPluginPath(strings.TrimSuffix(rel, "/")); pathErr != nil {
 					err = errors.New("unsafe plugin directory")
 					break
 				}
@@ -494,30 +560,10 @@ func (m *Manager) Install(path string) (Manifest, error) {
 	if err = os.Chmod(exe, 0700); err != nil {
 		return zero, err
 	}
-	m.mu.Lock()
-	dest := filepath.Join(root, v.ID)
-	if _, err = os.Lstat(dest); err == nil {
-		m.mu.Unlock()
-		return zero, errors.New("plugin already installed")
-	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		m.mu.Unlock()
+	if err = ctx.Err(); err != nil {
 		return zero, err
 	}
-	err = os.Rename(stage, dest)
-	if err == nil {
-		if c := m.clients[v.ID]; c != nil {
-			c.Close()
-			delete(m.clients, v.ID)
-		}
-		m.enabled[v.ID] = false
-		err = m.saveEnabled()
-	}
-	m.mu.Unlock()
-	if err != nil {
-		return zero, err
-	}
-	if err = m.Reload(); err != nil {
+	if err = commit(stage, v); err != nil {
 		return zero, err
 	}
 	return v, nil

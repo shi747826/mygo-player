@@ -25,6 +25,7 @@ func main() {
 	media := flag.String("media", "", "open a local video for player validation")
 	smokeNext := flag.Bool("smoke-next", false, "also validate automatic next episode (requires -smoke)")
 	flag.Parse()
+	mygo.Updater.SetSource(plugins.PlayerReleaseSource("https://github.com/shi747826/mygo-player"))
 	if *dir == "" {
 		base, e := os.UserConfigDir()
 		if e != nil {

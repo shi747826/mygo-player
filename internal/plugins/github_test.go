@@ -60,7 +60,10 @@ func githubZIP(t *testing.T, unsafe bool) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range map[string][]byte{"plugin.json": raw, "bin/plugin": []byte("binary fixture")} {
+	for name, data := range map[string][]byte{
+		"plugin.json": raw, "bin/plugin": []byte("binary fixture"),
+		"licenses/": nil, "licenses/NOTICE.txt": []byte("plugin notice"),
+	} {
 		w, e := z.Create(name)
 		if e != nil {
 			t.Fatal(e)

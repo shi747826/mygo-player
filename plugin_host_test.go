@@ -150,6 +150,40 @@ func TestPluginInstallCanBeCanceledFromPage(t *testing.T) {
 	}
 }
 
+func TestLegacyPluginUpdateOptionsAndCancellation(t *testing.T) {
+	cl, err := catalog.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newApp(cl, nil)
+	defer a.cancel()
+	const id = "legacy-source"
+	attachUITestPlugin(t, a, plugins.Manifest{ID: id, Name: "测试来源", Version: "1.0.0", Capabilities: []string{"detail", "resolve"}})
+	a.page = "插件"
+	tt := ui.NewTester(a.view, 1280, 820)
+	if tt.HasText("选择新版 ZIP…") {
+		t.Fatal("plugin update options were open before selecting a plugin")
+	}
+	if err := tt.Click("更新…"); err != nil {
+		t.Fatal(err)
+	}
+	if a.pluginUpdateID != id || !tt.HasText("检查并更新") || !tt.HasText("选择新版 ZIP…") {
+		t.Fatalf("missing legacy update options: %v", tt.Texts())
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	defer cancel()
+	a.pluginBusy, a.pluginUpdating = true, true
+	a.pluginInstallCancel = cancel
+	a.pluginMessage = "正在更新插件…"
+	tt = ui.NewTester(a.view, 1280, 820)
+	if err := tt.Click("取消更新"); err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() != context.Canceled || a.pluginMessage != "正在取消更新…" {
+		t.Fatal("cancel button did not cancel the plugin update")
+	}
+}
+
 // UI fixtures register a manifest without launching an executable or source SDK.
 func attachUITestPlugin(t *testing.T, a *app, m plugins.Manifest) {
 	t.Helper()

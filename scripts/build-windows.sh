@@ -17,8 +17,8 @@ STAGE=$(mktemp -d "$ROOT/build/windows-package.XXXXXX")
 # MyGo loads RT_GROUP_ICON ID 1 for the window and taskbar icon.
 # With no manifest input, rsrc assigns the first icon group ID 1.
 "$GO_BIN" run github.com/akavel/rsrc@v0.10.2 -arch amd64 -ico packaging/AppIcon.ico -o appicon_windows_amd64.syso
-export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
-"$GO_BIN" build -trimpath -tags mygo_noinspector -ldflags '-s -w -H=windowsgui' -o "$STAGE/mygo-player.exe" .
+UPDATE_FLAGS=$(sh scripts/desktop-update-flags.sh "$VERSION")
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 "$GO_BIN" build -trimpath -tags mygo_noinspector -ldflags "-s -w -H=windowsgui $UPDATE_FLAGS" -o "$STAGE/mygo-player.exe" .
 python3 scripts/verify-windows-icon.py "$STAGE/mygo-player.exe" packaging/AppIcon.ico
 cp "$WEBVIEW2_BOOTSTRAPPER" "$STAGE/MicrosoftEdgeWebview2Setup.exe"
 cp "$MYGO_PLAYER_BUNDLE_FFMPEG" "$STAGE/ffmpeg.exe"
@@ -48,6 +48,9 @@ if command -v makensis >/dev/null 2>&1; then
   python3 scripts/verify-windows-icon.py "$OUTPUT_DIR/mygo-player-$VERSION-windows-amd64-setup.exe" packaging/AppIcon.ico --any-group
 else
   printf '%s\n' 'NSIS not found; portable ZIP built without a setup executable.'
+fi
+if [ -n "${MYGO_PLAYER_UPDATE_PRIVATE_KEY:-}" ]; then
+  "$GO_BIN" run ./scripts/desktop-update windows-amd64 "$VERSION" "$STAGE" "$OUTPUT_DIR"
 fi
 printf 'Packages: %s\n' "$OUTPUT_DIR"
 printf 'Staged files: %s\n' "$STAGE"

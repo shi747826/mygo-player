@@ -71,6 +71,7 @@ func startPlugin(ctx context.Context, m Manifest, root, dataDir string) (*Client
 		return nil, err
 	}
 	cmd := exec.Command(executable, m.Runtime.Args...)
+	configureBackgroundCommand(cmd)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "MYGO_PLUGIN_DATA_DIR="+state)
 	c, err := startCommand(cmd)

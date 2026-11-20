@@ -1,0 +1,154 @@
+name: Desktop release
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    name: Package ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            runner: macos-15
+          - platform: windows-amd64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify tag and desktop version
+        run: |
+          python3 - <<'PY'
+          import os, plistlib
+          tag = os.environ['GITHUB_REF_NAME']
+          with open('packaging/Info.plist', 'rb') as config:
+              plist = plistlib.load(config)
+          for key in ('CFBundleShortVersionString', 'CFBundleVersion'):
+              if tag != 'v' + plist[key]:
+                  raise SystemExit(f'Tag {tag} must match {key} in packaging/Info.plist ({plist[key]})')
+          PY
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test and vet on macOS
+        if: matrix.platform == 'darwin-arm64'
+        run: |
+          go test -race ./...
+          go vet ./...
+      - name: Install NSIS
+        if: matrix.platform == 'windows-amd64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+      - name: Fetch packaged dependencies
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          printf 'MYGO_PLAYER_OUTPUT_DIR=%s\n' "$RUNNER_TEMP/desktop-release" >> "$GITHUB_ENV"
+          bash .github/scripts/prepare-release-dependencies.sh "$PLATFORM" "$RUNNER_TEMP/release-dependencies"
+      - name: Build Apple Silicon application and update
+        if: matrix.platform == 'darwin-arm64'
+        env:
+          MYGO_PLAYER_BUNDLE_FFMPEG: ${{ runner.temp }}/release-dependencies/ffmpeg
+          MYGO_PLAYER_UPDATE_PUBLIC_KEY: ${{ vars.MYGO_PLAYER_UPDATE_PUBLIC_KEY }}
+          MYGO_PLAYER_UPDATE_PRIVATE_KEY: ${{ secrets.MYGO_PLAYER_UPDATE_PRIVATE_KEY }}
+        run: |
+          : "${MYGO_PLAYER_UPDATE_PUBLIC_KEY:?Set repository variable MYGO_PLAYER_UPDATE_PUBLIC_KEY}"
+          : "${MYGO_PLAYER_UPDATE_PRIVATE_KEY:?Set repository secret MYGO_PLAYER_UPDATE_PRIVATE_KEY}"
+          test "$(uname -m)" = arm64
+          "$MYGO_PLAYER_BUNDLE_FFMPEG" -version
+          sh scripts/build.sh
+      - name: Cross-build Windows x64 portable ZIP, installer, and update
+        if: matrix.platform == 'windows-amd64'
+        env:
+          MYGO_PLAYER_BUNDLE_FFMPEG: ${{ runner.temp }}/release-dependencies/ffmpeg.exe
+          WEBVIEW2_BOOTSTRAPPER: ${{ runner.temp }}/release-dependencies/MicrosoftEdgeWebview2Setup.exe
+          MYGO_PLAYER_UPDATE_PUBLIC_KEY: ${{ vars.MYGO_PLAYER_UPDATE_PUBLIC_KEY }}
+          MYGO_PLAYER_UPDATE_PRIVATE_KEY: ${{ secrets.MYGO_PLAYER_UPDATE_PRIVATE_KEY }}
+        run: |
+          : "${MYGO_PLAYER_UPDATE_PUBLIC_KEY:?Set repository variable MYGO_PLAYER_UPDATE_PUBLIC_KEY}"
+          : "${MYGO_PLAYER_UPDATE_PRIVATE_KEY:?Set repository secret MYGO_PLAYER_UPDATE_PRIVATE_KEY}"
+          command -v makensis
+          sh scripts/build-windows.sh
+      - name: Verify release assets
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          cd "$MYGO_PLAYER_OUTPUT_DIR"
+          if [[ "$PLATFORM" == darwin-arm64 ]]; then
+            archive="mygo-player-$version-macos-arm64.zip"
+            ditto -x -k "$archive" "$RUNNER_TEMP/verify-release"
+            app="$RUNNER_TEMP/verify-release/MyGo Player.app"
+            codesign --verify --deep --strict "$app"
+            lipo -verify_arch arm64 "$app/Contents/MacOS/mygo-player"
+            lipo -verify_arch arm64 "$app/Contents/MacOS/ffmpeg"
+            test -f "$app/Contents/Resources/LICENSE"
+            test -f "$app/Contents/Resources/THIRD_PARTY_NOTICES.md"
+            test -d "$app/Contents/Resources/licenses"
+          else
+            archive="mygo-player-$version-windows-amd64.zip"
+            test -s "mygo-player-$version-windows-amd64-setup.exe"
+          fi
+          unzip -tq "$archive"
+          python3 -m json.tool "update-$PLATFORM.json" >/dev/null
+          tar -tzf "update-$PLATFORM.tar.gz" >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: ${{ runner.temp }}/desktop-release/*
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release
+          merge-multiple: true
+      - name: Publish GitHub Release
+        working-directory: release
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          assets=(
+            "mygo-player-$version-macos-arm64.zip"
+            "mygo-player-$version-windows-amd64.zip"
+            "mygo-player-$version-windows-amd64-setup.exe"
+            update-darwin-arm64.json update-darwin-arm64.tar.gz
+            update-windows-amd64.json update-windows-amd64.tar.gz
+          )
+          sha256sum -- "${assets[@]}" > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+          if draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft); then
+            if [[ "$draft" != true ]]; then
+              echo "Release $GITHUB_REF_NAME is already published. Use a new version tag."
+              exit 1
+            fi
+            gh release upload "$GITHUB_REF_NAME" --clobber -- "${assets[@]}" SHA256SUMS.txt
+            gh release edit "$GITHUB_REF_NAME" --draft=false
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "MyGo Player $GITHUB_REF_NAME" --generate-notes -- "${assets[@]}" SHA256SUMS.txt
+          fi

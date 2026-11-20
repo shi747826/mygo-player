@@ -284,7 +284,7 @@ func TestManifestValidation(t *testing.T) {
 	if err := v.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"../source", "/bin/sh", "bin/../../bad", "bin\\source"} {
+	for _, path := range []string{"../source", "/bin/sh", "bin/../../bad", "bin\\source", "C:/source", "bin/source:stream", "bin/.. /source", "bin/source."} {
 		v.Runtime.Executable = path
 		if v.Validate() == nil {
 			t.Fatalf("accepted %s", path)

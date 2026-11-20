@@ -23,6 +23,7 @@ func githubCommand(ctx context.Context, timeout time.Duration, path string, args
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, args...)
+	configureBackgroundCommand(cmd)
 	cmd.WaitDelay = 100 * time.Millisecond
 	raw, err := cmd.Output()
 	if ctx.Err() != nil {

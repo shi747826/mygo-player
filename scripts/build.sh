@@ -9,7 +9,9 @@ fi
 OUTPUT_DIR=${MYGO_PLAYER_OUTPUT_DIR:-"${HOME:?}/Desktop/MyGo Player 打包"}
 mkdir -p build "$OUTPUT_DIR"
 OUTPUT_DIR=$(CDPATH= cd -- "$OUTPUT_DIR" && pwd -P)
-CGO_ENABLED=0 "$GO_BIN" build -trimpath -tags mygo_noinspector -ldflags '-s -w' -o build/mygo-player .
+VERSION=$(python3 -c 'import plistlib; print(plistlib.load(open("packaging/Info.plist", "rb"))["CFBundleShortVersionString"])')
+UPDATE_FLAGS=$(sh scripts/desktop-update-flags.sh "$VERSION")
+CGO_ENABLED=0 "$GO_BIN" build -trimpath -tags mygo_noinspector -ldflags "-s -w $UPDATE_FLAGS" -o build/mygo-player .
 if [ "$(uname -s)" = Darwin ]; then
   APP="$ROOT/build/MyGo Player.app"
   # Replace the known bundle completely, so old bundled plugins cannot survive
@@ -32,8 +34,10 @@ if [ "$(uname -s)" = Darwin ]; then
   cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
   cp -R licenses "$APP/Contents/Resources/"
   if command -v codesign >/dev/null 2>&1; then codesign --force --deep --sign - "$APP"; fi
-  VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")
-  ARCH=$(uname -m)
+  ARCH=$($GO_BIN env GOARCH)
+  if [ -n "${MYGO_PLAYER_UPDATE_PRIVATE_KEY:-}" ]; then
+    "$GO_BIN" run ./scripts/desktop-update "darwin-$ARCH" "$VERSION" "$APP" "$OUTPUT_DIR"
+  fi
   ZIP="$OUTPUT_DIR/mygo-player-$VERSION-macos-$ARCH.zip"
   ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
   printf 'Built: %s\n' "$APP"

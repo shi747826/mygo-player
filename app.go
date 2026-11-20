@@ -32,6 +32,8 @@ type app struct {
 	sourceStores                              map[string]*catalog.Client
 	activeMedia                               *preparedEpisode
 	pluginPath                                string
+	pluginUpdateID, pluginUpdateLink          string
+	pluginUpdating                            bool
 	pluginBusy                                bool
 	pluginInstallCancel                       context.CancelFunc
 	accShelfCancel                            context.CancelFunc
@@ -116,6 +118,7 @@ type app struct {
 	accountGen                                int
 	dataDir                                   string
 	diagnosticState                           string
+	playerUpdate                              playerUpdateState
 	closed                                    bool
 	showPlayer                                bool
 	covers                                    map[string]*ui.Bitmap
@@ -1160,7 +1163,7 @@ func friendly(e error) string {
 	}
 	switch {
 	case errors.Is(e, pluginapi.ErrAnonymousLimited):
-		return "数据源暂时限制了播放，请稍后重试。"
+		return "当前来源限制了匿名访问，请稍后重试或切换来源。"
 	case errors.Is(e, pluginapi.ErrRateLimited):
 		return "请求过于频繁，请稍后重试。"
 	case errors.Is(e, pluginapi.ErrAuthRequired):
