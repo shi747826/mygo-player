@@ -74,9 +74,8 @@ func (a *app) cover(raw string) *ui.Bitmap {
 
 // decodeCoverBytes converts covers the Go image decoders cannot read
 // (notably HEIC, which the CDN serves) into a portable format it can.
-// On macOS it uses the system sips tool; elsewhere it returns the data
-// unchanged so a generally-supported format still loads, and an
-// unsupported one falls back to the placeholder text.
+// macOS uses the system sips tool; everywhere else the bundled FFmpeg
+// decodes the image, since WebView2 cannot render HEIC on its own.
 func decodeCoverBytes(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
@@ -92,9 +91,15 @@ func decodeCoverBytes(data []byte) ([]byte, error) {
 	if !heic && kind != "image/heic" && kind != "image/heif" {
 		return data, nil
 	}
-	if runtime.GOOS != "darwin" {
-		return nil, errUnsupportedImage
+	if runtime.GOOS == "darwin" {
+		if converted, err := convertCoverWithSips(data); err == nil {
+			return converted, nil
+		}
 	}
+	return convertCoverWithFFmpeg(data)
+}
+
+func convertCoverWithSips(data []byte) ([]byte, error) {
 	sips, err := exec.LookPath("sips")
 	if err != nil {
 		return nil, errUnsupportedImage
@@ -116,11 +121,46 @@ func decodeCoverBytes(data []byte) ([]byte, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, err
 	}
-	converted, err := os.ReadFile(out)
+	return os.ReadFile(out)
+}
+
+// convertCoverWithFFmpeg decodes HEIC covers with the FFmpeg build the host
+// ships next to the app. Without it Windows shows blank artwork, as WebView2
+// has no HEIF decoder of its own.
+func convertCoverWithFFmpeg(data []byte) ([]byte, error) {
+	ffmpeg := os.Getenv("MYGO_PLAYER_FFMPEG")
+	if ffmpeg == "" {
+		name := "ffmpeg"
+		if runtime.GOOS == "windows" {
+			name = "ffmpeg.exe"
+		}
+		if path, err := exec.LookPath(name); err == nil {
+			ffmpeg = path
+		}
+	}
+	if ffmpeg == "" {
+		return nil, errUnsupportedImage
+	}
+	dir, err := os.MkdirTemp("", "hgcover-")
 	if err != nil {
 		return nil, err
 	}
-	return converted, nil
+	defer os.RemoveAll(dir)
+	in := filepath.Join(dir, "cover.heic")
+	out := filepath.Join(dir, "cover.png")
+	if err := os.WriteFile(in, data, 0600); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-v", "error", "-nostdin", "-y", "-i", in, "-frames:v", "1", out)
+	configureCoverCommand(cmd)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(out)
 }
 
 var errUnsupportedImage = &coverError{"unsupported image format"}
