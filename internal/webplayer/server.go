@@ -224,8 +224,8 @@ func playerHTML(source, stateURL string) string {
 	state, _ := json.Marshal(stateURL)
 	return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>视频播放</title><style>` + controlsCSS + `</style></head><body><video id="video" playsinline preload="auto"></video><div id="hint" role="status" aria-live="polite"></div>` + controlsHTML + `<script>
 (()=>{'use strict';const hint=document.getElementById('hint');let video=document.getElementById('video');
-const source=` + string(src) + `, endpoint=` + string(state) + `;let sequence=0,sending=false,pending=null,wantPlay=false,lastReport='';
-function snapshot(){return {sequence:++sequence,currentTime:Number.isFinite(video.currentTime)?video.currentTime:0,duration:Number.isFinite(video.duration)?video.duration:0,readyState:video.readyState,error:video.error?video.error.code:0,paused:video.paused,ended:video.ended,volume:video.muted?0:video.volume,rate:video.playbackRate};}
+const source=` + string(src) + `, endpoint=` + string(state) + `;let sequence=0,sending=false,pending=null,wantPlay=false,lastReport='',switching=false,loadFailure=false;
+function snapshot(){return {sequence:++sequence,currentTime:Number.isFinite(video.currentTime)?video.currentTime:0,duration:Number.isFinite(video.duration)?video.duration:0,readyState:video.readyState,error:loadFailure?4:(video.error?video.error.code:0),paused:video.paused,ended:video.ended,volume:video.muted?0:video.volume,rate:video.playbackRate};}
 async function flush(){if(sending)return;sending=true;try{while(pending){const body=pending;pending=null;try{const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store'});if(response.ok)lastReport=JSON.stringify({...body,sequence:0});}catch(_){}}}finally{sending=false;}}
 function report(){const next=snapshot();if(!sending&&JSON.stringify({...next,sequence:0})===lastReport)return;pending=next;void flush();}
 async function play(el){if(!wantPlay)return;try{await el.play();}catch(error){if(!wantPlay||error.name==='AbortError')return;el.muted=true;try{await el.play();}catch(_){hint.textContent='自动播放被阻止';}}report();}
@@ -234,10 +234,10 @@ function attach(el){for(const event of events)el.addEventListener(event,()=>{if(
 attach(video);
 window.playerCommand=(command,value)=>{switch(command){case 'play':wantPlay=true;void play(video);break;case 'pause':wantPlay=false;video.pause();break;case 'seek':video.currentTime=Number.isFinite(video.duration)?Math.min(value,video.duration):value;break;case 'rate':video.playbackRate=value;break;case 'volume':video.volume=value;video.muted=value===0;break;}report();return true;};
 window.playerLoad=(url,start)=>{if(typeof url!=='string'||!/^https?:\/\//.test(url)||switching)return false;switching=true;const next=document.createElement('video');next.className='video-layer';next.setAttribute('playsinline','');next.preload='auto';next.style.opacity='0';video.after(next);next.volume=video.volume;next.muted=video.muted;next.playbackRate=video.playbackRate;
-const abort=()=>{next.remove();switching=false;if(wantPlay)void play(video);};
+const abort=()=>{loadFailure=true;next.remove();switching=false;report();};
 next.addEventListener('error',abort,{once:true});
-next.addEventListener('loadeddata',()=>{if(Number.isFinite(start)&&start>0){try{next.currentTime=start;}catch(_){}}const finish=()=>{next.style.opacity='1';video.style.opacity='0';const old=video;video=next;attach(next);old.pause();setTimeout(()=>old.remove(),260);switching=false;report();};if(wantPlay){next.play().then(finish).catch(()=>{next.muted=true;next.play().then(finish).catch(abort);});}else{finish();}},{once:true});
-next.src=url;next.load();return true;};
+next.addEventListener('loadeddata',()=>{loadFailure=false;if(Number.isFinite(start)&&start>0){try{next.currentTime=start;}catch(_){}}const finish=()=>{next.style.opacity='1';video.style.opacity='0';const old=video;video=next;attach(next);old.pause();setTimeout(()=>old.remove(),260);switching=false;report();};if(wantPlay){next.play().then(finish).catch(()=>{next.muted=true;next.play().then(finish).catch(abort);});}else{finish();}},{once:true});
+next.src=url;next.load();report();return true;};
 video.addEventListener('loadedmetadata',()=>{if(wantPlay)void play(video);},{once:true});video.src=source;video.load();report();const timer=setInterval(report,500);window.addEventListener('pagehide',()=>{clearInterval(timer);video.pause();});
 ` + controlsJS + `
 })();</script></body></html>`

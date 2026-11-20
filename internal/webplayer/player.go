@@ -96,6 +96,9 @@ func open(win *mygo.Window, source string, file *os.File, update func(func())) (
 			p.state = s
 			if s.Error != 0 {
 				p.err = mediaError(s.Error)
+			} else if s.ReadyState >= 2 {
+				// A later episode may play fine after an earlier one failed.
+				p.err = nil
 			}
 		})
 	}, func(action ControlAction) {
@@ -163,6 +166,7 @@ func (p *Player) SwitchSource(rawURL string, start time.Duration) bool {
 	if start < 0 {
 		start = 0
 	}
+	p.err = nil
 	p.enqueue("window.playerLoad(" + strconv.Quote(rawURL) + "," + strconv.FormatFloat(start.Seconds(), 'f', -1, 64) + ")")
 	return true
 }
