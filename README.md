@@ -28,7 +28,7 @@ https://github.com/owner/repo/releases/download/v0.3.0/my-source-darwin-arm64.zi
 
 ## 桌面应用内更新
 
-- **播放器**：在「插件」页的「播放器更新」区域点击「检查更新」，然后下载并安装，重启后生效。签名校验通过后才替换应用。Windows x64 与 macOS Apple Silicon 支持此流程。0.3.12 及更早版本需要先安装一次支持更新的正式版。
+- **播放器**：在「插件」页的「播放器更新」区域点击「检查更新」，然后下载并安装，重启后生效。签名校验通过后才替换应用。Windows x64 与 macOS Apple Silicon 支持此流程。0.3.13 及更早版本需要先安装一次 0.3.14 或更新的正式版，之后即可在应用内更新。
 - **插件**：在已安装插件旁点击「更新」。通过 GitHub 安装的插件会使用保存的仓库链接。之前用 ZIP 安装的插件可填写作者的 GitHub 仓库链接，或用新 ZIP 更新。更新保留启用状态、收藏、历史及插件数据。
 
 私有 GitHub Releases 的更新使用本机已有的 GitHub CLI 登录或环境变量凭据。运行于只读安装位置时，请将应用移到当前用户可写的位置。
@@ -86,7 +86,7 @@ sh scripts/build-windows.sh
 
 Windows 图标使用与 macOS 相同的应用图案，`packaging/AppIcon.ico` 包含 16–256 像素多尺寸图像。打包脚本通过固定版本 `github.com/akavel/rsrc@v0.10.2` 生成 `appicon_windows_amd64.syso`，将图标嵌入程序的资源 ID 1，供 MyGo 窗口和 Windows Shell 使用；首次构建需联网下载该工具。安装程序和卸载程序也使用相同图标。构建时会检查实际 EXE 的图标资源与 ICO 内容一致，缺失时中止打包。
 
-WebView2 引导程序来自 <https://go.microsoft.com/fwlink/p/?LinkId=2124703>。请使用 Windows x64 FFmpeg，来源与许可证见第三方声明。Windows GitHub 下载器使用 `HTTP_PROXY` / `HTTPS_PROXY` 并遵守 `NO_PROXY`；当前未读取 Windows 系统代理。
+WebView2 引导程序来自 <https://go.microsoft.com/fwlink/p/?LinkId=2124703>。请使用 Windows x64 FFmpeg，来源与许可证见第三方声明。Windows 上的 GitHub 下载器会读取系统代理（Internet 选项），也遵守 `HTTP_PROXY` / `HTTPS_PROXY` 和 `NO_PROXY` 环境变量；更新卡住时请确认系统代理已开启。
 
 ## Android
 
