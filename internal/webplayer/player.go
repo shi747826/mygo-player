@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +29,56 @@ type Player struct {
 	commands      chan string
 	controlConfig string
 	onControl     func(ControlAction)
+	media         *mediaSwitch
+}
+
+// mediaSwitch 跟踪页面侧的片源代际。换集时宿主先 begin 再下发新地址，
+// 期间到达的上一集状态由 observe 丢弃，避免读取旧片的 Ended/Rate。
+type mediaSwitch struct {
+	mu         sync.Mutex
+	generation uint64
+	base       uint64
+	pending    bool
+}
+
+func (m *mediaSwitch) begin() {
+	m.mu.Lock()
+	m.base = m.generation
+	m.pending = true
+	m.mu.Unlock()
+}
+
+func (m *mediaSwitch) cancel() {
+	m.mu.Lock()
+	m.pending = false
+	m.mu.Unlock()
+}
+
+// observe 记录状态并报告它是否属于当前片源代际。
+func (m *mediaSwitch) observe(s videoState) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s.MediaGeneration < m.generation {
+		return false
+	}
+	m.generation = s.MediaGeneration
+	// 新片源至少解出元数据（或明确失败）才认为换集结束。
+	if m.pending && s.MediaGeneration > m.base && (s.ReadyState >= 2 || s.Error != 0) {
+		m.pending = false
+	}
+	return true
+}
+
+func (m *mediaSwitch) switching() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pending
+}
+
+func (m *mediaSwitch) current() uint64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.generation
 }
 
 // OpenURL 创建当前焦点窗口内的播放器；没有焦点时使用唯一窗口。
@@ -87,10 +138,10 @@ func open(win *mygo.Window, source string, file *os.File, update func(func())) (
 	if win == nil {
 		return fail(errors.New("创建播放器失败，请先打开并聚焦应用窗口"))
 	}
-	p := &Player{commands: make(chan string, 64)}
+	p := &Player{commands: make(chan string, 64), media: &mediaSwitch{}}
 	b, err := newBridge(source, file, func(s videoState) {
 		update(func() {
-			if p.closed.Load() || s.Sequence <= p.state.Sequence {
+			if p.closed.Load() || !p.media.observe(s) || s.Sequence <= p.state.Sequence {
 				return
 			}
 			p.state = s
@@ -152,9 +203,10 @@ type ControlEpisode struct {
 	Number int    `json:"number"`
 }
 
-// SwitchSource replaces the playing media without replacing the WebView, so a
-// fullscreen window keeps its state and the previous frame stays visible until
-// the new video has decoded its first frame.
+// SwitchSource replaces the media of the single video element without replacing
+// the WebView, so a fullscreen window keeps its state and the previous frame
+// stays frozen until the new source decodes its first frame. A later call
+// always wins over an earlier one still loading.
 func (p *Player) SwitchSource(rawURL string, start time.Duration) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
@@ -167,9 +219,39 @@ func (p *Player) SwitchSource(rawURL string, start time.Duration) bool {
 		start = 0
 	}
 	p.err = nil
-	p.enqueue("window.playerLoad(" + strconv.Quote(rawURL) + "," + strconv.FormatFloat(start.Seconds(), 'f', -1, 64) + ")")
+	p.media.begin()
+	if !p.push("window.playerLoad(" + strconv.Quote(rawURL) + "," + strconv.FormatFloat(start.Seconds(), 'f', -1, 64) + ")") {
+		p.media.cancel()
+		return false
+	}
 	return true
 }
+
+// BeginSourceSwitch silences and pauses the current video immediately, before
+// the next episode has been resolved, and cancels any pending play/load. The
+// frozen frame and window fullscreen survive; state from the old source is
+// dropped until SwitchSource starts the new generation. Call it from the host
+// when an episode switch begins.
+func (p *Player) BeginSourceSwitch() bool {
+	if p.closed.Load() {
+		return false
+	}
+	p.media.begin()
+	if !p.push("window.playerBeginSwitch()") {
+		p.media.cancel()
+		return false
+	}
+	return true
+}
+
+// SwitchPending reports whether a source switch is still in flight, in which
+// case playback state belongs to the previous episode and must not be trusted.
+func (p *Player) SwitchPending() bool {
+	return !p.closed.Load() && p.media.switching()
+}
+
+// MediaGeneration is the page-side identifier of the current source.
+func (p *Player) MediaGeneration() uint64 { return p.media.current() }
 
 // ConfigureControls updates the HTML UI only when app-owned options change.
 func (p *Player) ConfigureControls(config ControlConfig, handler func(ControlAction)) {
@@ -282,14 +364,19 @@ func (p *Player) SetVolume(volume float64) {
 func (p *Player) command(name string, value float64) {
 	p.enqueue("window.playerCommand(" + strconv.Quote(name) + "," + strconv.FormatFloat(value, 'f', -1, 64) + ")")
 }
-func (p *Player) enqueue(js string) {
+func (p *Player) enqueue(js string) { _ = p.push(js) }
+
+// push 返回命令是否入队，调用方可据此回滚换集标记。
+func (p *Player) push(js string) bool {
 	if p.closed.Load() {
-		return
+		return false
 	}
 	select {
 	case p.commands <- js:
+		return true
 	default:
 		p.err = errors.New("播放器控制请求过多，请稍后重试")
+		return false
 	}
 }
 func (p *Player) runCommands(ctx context.Context, page *mygo.Page, update func(func())) {

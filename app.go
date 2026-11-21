@@ -73,6 +73,9 @@ type app struct {
 	qualities                                 []string
 	autoplay, pinned, portrait                bool
 	switchingEpisode                          bool
+	awaitingMedia                             bool
+	switchIssued                              bool
+	switchAwaitStarted                        time.Time
 	fullscreenVideo                           bool
 	windowButtonsDark                         bool
 	windowFullscreen                          bool
@@ -145,20 +148,23 @@ type app struct {
 }
 
 type preparedEpisode struct {
-	media  pluginapi.Media
-	source plugins.Source
+	media    pluginapi.Media
+	source   plugins.Source
+	released sync.Once
 }
 
 func (p *preparedEpisode) close() {
 	if p == nil || p.media.SessionID == "" || p.source == nil {
 		return
 	}
-	source, id := p.source, p.media.SessionID
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = source.Release(ctx, id)
-	}()
+	p.released.Do(func() {
+		source, id := p.source, p.media.SessionID
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = source.Release(ctx, id)
+		}()
+	})
 }
 func newApp(c *catalog.Client, _ any) *app {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -634,6 +640,9 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 		a.stopPlayer()
 	}
 	a.switchingEpisode = switching
+	a.awaitingMedia = true
+	a.switchIssued = false
+	a.switchAwaitStarted = time.Now()
 	a.showPlayer = true
 	a.canResetDevice = false
 	a.autoResetTried = false
@@ -654,15 +663,9 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 			return
 		}
 	}
-	// While switching episodes the previous frame stays on screen; a loading
-	// overlay here would flash over the video on every automatic transition.
-	if switching {
-		a.preparing = false
-		a.playMessage = ""
-	} else {
-		a.preparing = true
-		a.playMessage = "正在准备视频…"
-	}
+	// The selected episode owns the UI immediately, even while its URL resolves.
+	a.preparing = true
+	a.playMessage = "正在准备视频…"
 	quality := a.quality
 	if quality == "自动" {
 		quality = ""
@@ -686,6 +689,7 @@ func (a *app) startEpisodeWithMode(s catalog.Series, eps []catalog.Episode, idx 
 			}
 		}
 		if err != nil {
+			(&preparedEpisode{media: media, source: source}).close()
 			a.playError(id, err)
 			return
 		}
@@ -709,17 +713,20 @@ func (a *app) beginEpisodeSwitch() {
 	}
 	a.saveProgress()
 	if a.player != nil {
-		a.player.Pause()
+		a.player.BeginSourceSwitch()
+	}
+	if a.preloadCancel != nil {
+		a.preloadCancel()
+		a.preloadCancel = nil
+	}
+	if a.danmakuCancel != nil {
+		a.danmakuCancel()
+		a.danmakuCancel = nil
 	}
 	a.resumePending = false
 	a.observedPlaying = false
 	a.preparing = false
 	a.endedHandled = false
-	if a.win != nil {
-		time.AfterFunc(30*time.Second, func() {
-			a.win.Update(func() { a.switchingEpisode = false })
-		})
-	}
 }
 
 // retryablePlayback reports whether resolving the same episode once more can
@@ -741,8 +748,16 @@ func (a *app) adoptMedia(id int, prep *preparedEpisode, pos float64, playWhenRea
 	if switching {
 		p = a.player
 		if !p.SwitchSource(prep.media.URL, time.Duration(pos*float64(time.Second))) {
+			_ = p.Close()
+			a.player = nil
+			if a.activeMedia != nil {
+				a.activeMedia.close()
+				a.activeMedia = nil
+			}
 			switching = false
 			p = nil
+		} else {
+			a.switchIssued = true
 		}
 	}
 	if !switching {
@@ -750,6 +765,8 @@ func (a *app) adoptMedia(id int, prep *preparedEpisode, pos float64, playWhenRea
 		p, err = webplayer.OpenURLInWindow(a.win, prep.media.URL, a.playerChanged)
 		if err != nil {
 			prep.close()
+			a.awaitingMedia = false
+			a.switchingEpisode = false
 			a.preparing = false
 			a.playMessage = "系统无法打开视频，请检查媒体组件和解码支持。"
 			if a.smoke {
@@ -766,6 +783,11 @@ func (a *app) adoptMedia(id int, prep *preparedEpisode, pos float64, playWhenRea
 		time.AfterFunc(20*time.Second, previous.close)
 	}
 	a.player = p
+	// A swapped source keeps reporting the previous episode until the new
+	// generation has metadata; advancePlayback clears this flag then.
+	a.awaitingMedia = switching
+	a.switchAwaitStarted = time.Now()
+	a.switchingEpisode = false
 	a.qualities = []string{"自动"}
 	for _, q := range prep.media.Qualities {
 		if q != "" && !contains(a.qualities, q) {
@@ -775,8 +797,13 @@ func (a *app) adoptMedia(id int, prep *preparedEpisode, pos float64, playWhenRea
 	if !a.qualityChosen {
 		a.quality = highestQuality(a.qualities, prep.media.Definition)
 	}
-	a.preparing = false
-	a.playMessage = ""
+	if a.awaitingMedia {
+		a.preparing = true
+		a.playMessage = "正在准备视频…"
+	} else {
+		a.preparing = false
+		a.playMessage = ""
+	}
 	a.resume = pos
 	a.resumePending = pos > 0
 	a.resumeIssued = false
@@ -864,6 +891,7 @@ func (a *app) playError(id int, e error) {
 			return
 		}
 		a.preparing = false
+		a.awaitingMedia = false
 		a.playMessage = friendly(e)
 		// 只有匿名设备被限制时，换一台设备才有意义。
 		a.canResetDevice = errors.Is(e, pluginapi.ErrAnonymousLimited) && a.sourceHas("resetDevice")
@@ -1043,8 +1071,11 @@ func seekAcknowledged(pos, target float64) bool {
 	return validPosition(pos) && validPosition(target) && math.Abs(pos-target) <= 2
 }
 func (a *app) stopPlayer() {
+	a.playID++
 	a.playerFocusPending = false
 	a.switchingEpisode = false
+	a.awaitingMedia = false
+	a.switchIssued = false
 	if a.playCancel != nil {
 		a.playCancel()
 		a.playCancel = nil
@@ -1141,6 +1172,24 @@ func (a *app) advancePlayback() {
 	if p == nil {
 		return
 	}
+	if a.awaitingMedia {
+		// While the next URL is still resolving there is no new generation to
+		// wait for yet; only a switch that was actually issued can complete.
+		if !a.switchIssued {
+			return
+		}
+		if p.SwitchPending() && time.Since(a.switchAwaitStarted) < 20*time.Second {
+			return
+		}
+		a.awaitingMedia = false
+		if p.SwitchPending() {
+			a.preparing = false
+			a.playMessage = "切换剧集超时，请点选集重试或换清晰度。"
+			return
+		}
+		a.preparing = false
+		a.playMessage = ""
+	}
 	if e := p.Err(); e != nil {
 		a.playMessage = "视频播放失败：系统可能不支持该视频编码，或网络连接已中断。可换画质后重试。"
 		if a.smoke {
@@ -1194,6 +1243,13 @@ func (a *app) advancePlayback() {
 		if a.smokeStage == 0 && pos > 2 {
 			a.smokeSeek = math.Min(12, p.Duration().Seconds()/2)
 			p.Seek(time.Duration(a.smokeSeek * float64(time.Second)))
+			if a.smokeNext {
+				// The reported double-speed regression only shows up across an
+				// episode switch: video.load() resets playbackRate unless the
+				// page reapplies it, so the smoke run sets 2x before advancing.
+				a.rate = 2
+				p.SetRate(a.rate)
+			}
 			p.Play()
 			a.smokeStage = 1
 		}
@@ -1207,6 +1263,10 @@ func (a *app) advancePlayback() {
 			fmt.Println("SMOKE seek verified; waiting for automatic next episode")
 		}
 		if (a.smokeStage == 2 && pos >= a.smokeSeek+1 && !a.smokeNext) || (a.smokeStage == 3 && a.playingEpisode.ID != a.smokeFirstEpisode && pos > 1) {
+			if a.smokeNext && math.Abs(p.Rate()-2) > .01 {
+				a.failSmoke(fmt.Sprintf("double speed lost across episode switch: %.2fx", p.Rate()))
+				return
+			}
 			p.Pause()
 			a.saveProgress()
 			a.smokePassed = true

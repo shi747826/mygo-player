@@ -37,15 +37,18 @@ var controlsCSS string
 var controlsJS string
 
 type videoState struct {
-	Volume      float64 `json:"volume"`
-	Rate        float64 `json:"rate"`
-	Sequence    uint64  `json:"sequence"`
-	CurrentTime float64 `json:"currentTime"`
-	Duration    float64 `json:"duration"`
-	ReadyState  int     `json:"readyState"`
-	Error       int     `json:"error"`
-	Paused      bool    `json:"paused"`
-	Ended       bool    `json:"ended"`
+	Volume float64 `json:"volume"`
+	Rate   float64 `json:"rate"`
+	// MediaGeneration 标记页面当前加载的是第几路片源，换源时递增；
+	// 宿主用它丢弃上一集迟到的状态上报。
+	MediaGeneration uint64  `json:"mediaGeneration"`
+	Sequence        uint64  `json:"sequence"`
+	CurrentTime     float64 `json:"currentTime"`
+	Duration        float64 `json:"duration"`
+	ReadyState      int     `json:"readyState"`
+	Error           int     `json:"error"`
+	Paused          bool    `json:"paused"`
+	Ended           bool    `json:"ended"`
 }
 type bridge struct {
 	token         string
@@ -223,22 +226,36 @@ func playerHTML(source, stateURL string) string {
 	src, _ := json.Marshal(source)
 	state, _ := json.Marshal(stateURL)
 	return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>视频播放</title><style>` + controlsCSS + `</style></head><body><video id="video" playsinline preload="auto"></video><div id="hint" role="status" aria-live="polite"></div>` + controlsHTML + `<script>
-(()=>{'use strict';const hint=document.getElementById('hint');let video=document.getElementById('video');
-const source=` + string(src) + `, endpoint=` + string(state) + `;let sequence=0,sending=false,pending=null,wantPlay=false,lastReport='',switching=false,loadFailure=false;
-function snapshot(){return {sequence:++sequence,currentTime:Number.isFinite(video.currentTime)?video.currentTime:0,duration:Number.isFinite(video.duration)?video.duration:0,readyState:video.readyState,error:loadFailure?4:(video.error?video.error.code:0),paused:video.paused,ended:video.ended,volume:video.muted?0:video.volume,rate:video.playbackRate};}
+(()=>{'use strict';const hint=document.getElementById('hint');const video=document.getElementById('video');
+const source=` + string(src) + `, endpoint=` + string(state) + `;
+let sequence=0,sending=false,pending=null,wantPlay=false,lastReport='',loadFailure=false;
+// 单元素播放：video 元素永不替换，换集只换 src，所以控制条的 timeupdate/click
+// 监听始终有效（进度条时间不再停在上一集）。generation 标识当前片源代号。
+let generation=0,switching=false,playToken=0,pendingStart=0,pendingSeek=false,desiredRate=1,applyingRate=false,silenced=false,resumeVolume=1;
+function snapshot(){return {sequence:++sequence,mediaGeneration:generation,currentTime:Number.isFinite(video.currentTime)?video.currentTime:0,duration:Number.isFinite(video.duration)?video.duration:0,readyState:video.readyState,error:loadFailure?4:(video.error?video.error.code:0),paused:video.paused,ended:video.ended,volume:video.muted?0:video.volume,rate:video.playbackRate};}
 async function flush(){if(sending)return;sending=true;try{while(pending){const body=pending;pending=null;try{const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),cache:'no-store'});if(response.ok)lastReport=JSON.stringify({...body,sequence:0});}catch(_){}}}finally{sending=false;}}
 function report(){const next=snapshot();if(!sending&&JSON.stringify({...next,sequence:0})===lastReport)return;pending=next;void flush();}
-async function play(el){if(!wantPlay)return;try{await el.play();}catch(error){if(!wantPlay||error.name==='AbortError')return;el.muted=true;try{await el.play();}catch(_){hint.textContent='自动播放被阻止';}}report();}
+// playToken 让换集时尚未完成的 play() 失效，避免旧片源在静音后又出声。
+async function play(){if(!wantPlay||switching)return;const token=++playToken;let started=false;try{await video.play();started=true;}catch(error){if(token!==playToken)return;if(!wantPlay||error.name==='AbortError')return;video.muted=true;try{await video.play();started=true;}catch(_){hint.textContent='自动播放被阻止';}}if(token!==playToken){if(switching)try{video.pause();}catch(_){}return;}if(started)report();}
+// video.load() 会把 playbackRate 重置成 defaultPlaybackRate，两者一起设置才保得住 2 倍速。
+function applyRate(){applyingRate=true;try{video.defaultPlaybackRate=desiredRate;if(video.playbackRate!==desiredRate)video.playbackRate=desiredRate;}catch(_){}applyingRate=false;}
+function restoreSound(){if(!silenced)return;silenced=false;video.muted=false;video.volume=resumeVolume;}
 const events=['loadedmetadata','loadeddata','canplay','canplaythrough','play','playing','pause','waiting','stalled','seeking','seeked','ended','durationchange','ratechange','volumechange','error'];
-function attach(el){for(const event of events)el.addEventListener(event,()=>{if(event==='error'&&el===video)hint.textContent='视频加载失败，请刷新地址或更换清晰度。';report();});}
-attach(video);
-window.playerCommand=(command,value)=>{switch(command){case 'play':wantPlay=true;void play(video);break;case 'pause':wantPlay=false;video.pause();break;case 'seek':video.currentTime=Number.isFinite(video.duration)?Math.min(value,video.duration):value;break;case 'rate':video.playbackRate=value;break;case 'volume':video.volume=value;video.muted=value===0;break;}report();return true;};
-window.playerLoad=(url,start)=>{if(typeof url!=='string'||!/^https?:\/\//.test(url)||switching)return false;switching=true;const next=document.createElement('video');next.className='video-layer';next.setAttribute('playsinline','');next.preload='auto';next.style.opacity='0';video.after(next);next.volume=video.volume;next.muted=video.muted;next.playbackRate=video.playbackRate;
-const abort=()=>{loadFailure=true;next.remove();switching=false;report();};
-next.addEventListener('error',abort,{once:true});
-next.addEventListener('loadeddata',()=>{loadFailure=false;if(Number.isFinite(start)&&start>0){try{next.currentTime=start;}catch(_){}}const finish=()=>{next.style.opacity='1';video.style.opacity='0';const old=video;video=next;attach(next);old.pause();setTimeout(()=>old.remove(),260);switching=false;report();};if(wantPlay){next.play().then(finish).catch(()=>{next.muted=true;next.play().then(finish).catch(abort);});}else{finish();}},{once:true});
-next.src=url;next.load();report();return true;};
-video.addEventListener('loadedmetadata',()=>{if(wantPlay)void play(video);},{once:true});video.src=source;video.load();report();const timer=setInterval(report,500);window.addEventListener('pagehide',()=>{clearInterval(timer);video.pause();});
+for(const event of events)video.addEventListener(event,()=>{
+  if(event==='error'){const code=video.error?video.error.code:0;if(code<=1)return;/*换源打断不算失败*/loadFailure=true;hint.textContent='视频加载失败，请刷新地址或更换清晰度。';}
+  if(event==='ratechange'&&!applyingRate&&video.playbackRate!==desiredRate)applyRate();
+  if(event==='loadedmetadata'){if(pendingSeek){pendingSeek=false;if(pendingStart>0){try{video.currentTime=Number.isFinite(video.duration)&&video.duration>0?Math.min(pendingStart,video.duration):pendingStart;}catch(_){}}}applyRate();}
+  if((event==='loadedmetadata'||event==='canplay')&&wantPlay&&!switching)void play();
+  report();
+});
+window.playerCommand=(command,value)=>{switch(command){case 'play':wantPlay=true;void play();break;case 'pause':wantPlay=false;video.pause();break;case 'seek':video.currentTime=Number.isFinite(video.duration)?Math.min(value,video.duration):value;break;case 'rate':if(Number.isFinite(value)){desiredRate=Math.max(.25,Math.min(4,value));applyRate();}break;case 'volume':video.volume=value;video.muted=value===0;if(value>0){resumeVolume=value;silenced=false;}break;}report();return true;};
+// 宿主开始解析下一集时调用：立刻静音并暂停旧片源，保留最后一帧和全屏状态，
+// 同时让未完成的 play() 失效。之后的 playerLoad 换源并恢复声音与播放。
+window.playerBeginSwitch=()=>{if(switching)return true;switching=true;playToken+=1;if(!video.muted){silenced=true;resumeVolume=video.volume;video.muted=true;}try{video.pause();}catch(_){}report();return true;};
+// latest-wins：连续换源只有最后一次生效，前一次由 load() 打断，不再创建第二个
+// video 元素，因此同一时刻最多只有一路音频。
+window.playerLoad=(url,start)=>{if(typeof url!=='string'||!/^https?:\/\//.test(url))return false;generation+=1;loadFailure=false;playToken+=1;switching=false;pendingStart=Number.isFinite(start)&&start>0?start:0;pendingSeek=pendingStart>0;try{video.pause();}catch(_){}video.src=url;applyRate();video.load();applyRate();restoreSound();if(wantPlay)void play();report();return true;};
+applyRate();video.src=source;video.load();applyRate();report();const timer=setInterval(report,500);window.addEventListener('pagehide',()=>{clearInterval(timer);video.pause();});
 ` + controlsJS + `
 })();</script></body></html>`
 }

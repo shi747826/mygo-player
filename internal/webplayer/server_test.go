@@ -35,13 +35,38 @@ func TestHTMLSourceEscaping(t *testing.T) {
 	if !strings.Contains(html, "const source="+string(encoded)) {
 		t.Fatal("source was not encoded as JSON")
 	}
-	for _, part := range []string{"playsinline preload", "if(wantPlay)void play(video)", "wantPlay=false;video.pause()", "setInterval(report,500)", "el.muted=true", "自动播放被阻止", "window.playerCommand", "window.playerLoad", "video.after(next)", "next.addEventListener('loadeddata'", "currentTime", "duration", "readyState"} {
+	for _, part := range []string{"playsinline preload", "const video=document.getElementById('video')", "window.playerBeginSwitch", "window.playerCommand", "window.playerLoad", "defaultPlaybackRate", "mediaGeneration", "setInterval(report,500)", "自动播放被阻止", "currentTime", "duration", "readyState"} {
 		if !strings.Contains(html, part) {
 			t.Fatalf("missing %s", part)
 		}
 	}
+	// 换集只能换 src：再建一个 video 会让控制监听失效并同时出声。
+	for _, part := range []string{"createElement('video')", "video.after(", "video=next", "video-layer"} {
+		if strings.Contains(html, part) {
+			t.Fatalf("media must stay in a single video element, found %s", part)
+		}
+	}
 	if strings.Contains(html, "<video") && strings.Contains(html, " controls") {
 		t.Fatal("native video controls must be hidden; the app draws its own")
+	}
+}
+
+// 页面用 mediaGeneration 标记片源代际，宿主据此丢弃上一集迟到的上报。
+func TestStateGenerationDecoded(t *testing.T) {
+	var states []videoState
+	b := testBridge(t, nil, func(s videoState) { states = append(states, s) })
+	body := `{"sequence":1,"mediaGeneration":7,"currentTime":1.5,"duration":24,"readyState":4}`
+	req := httptest.NewRequest("POST", "/state?token="+b.token, strings.NewReader(body))
+	req.Host = b.host
+	req.Header.Set("Origin", b.origin)
+	req.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	b.ServeHTTP(response, req)
+	if response.Code != 204 {
+		t.Fatalf("got %d: %s", response.Code, response.Body.String())
+	}
+	if len(states) != 1 || states[0].MediaGeneration != 7 {
+		t.Fatalf("mediaGeneration was not decoded: %#v", states)
 	}
 }
 func TestStateValidation(t *testing.T) {
@@ -57,6 +82,7 @@ func TestStateValidation(t *testing.T) {
 		{"foreign origin", "POST", b.token, "https://attacker.invalid", "application/json", good, b.host, 403},
 		{"missing origin", "POST", b.token, "", "application/json", good, b.host, 403},
 		{"null origin", "POST", b.token, "null", "application/json", good, b.host, 403},
+		{"negative generation", "POST", b.token, b.origin, "application/json", `{"sequence":1,"mediaGeneration":-1,"readyState":4}`, b.host, 400},
 		{"wrong method", "GET", b.token, b.origin, "application/json", good, b.host, 405},
 		{"wrong host", "POST", b.token, b.origin, "application/json", good, "attacker.invalid", 403},
 		{"wrong type", "POST", b.token, b.origin, "text/plain", good, b.host, 415},

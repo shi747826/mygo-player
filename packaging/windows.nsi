@@ -2,7 +2,7 @@ Unicode True
 !include "MUI2.nsh"
 !include "x64.nsh"
 !ifndef APP_VERSION
-  !define APP_VERSION "0.3.18"
+  !define APP_VERSION "0.3.19"
 !endif
 !ifndef APP_DIR
   !define APP_DIR "../build/win"

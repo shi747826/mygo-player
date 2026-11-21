@@ -37,6 +37,109 @@ func TestPlayerControlsScript(t *testing.T) {
 	}
 }
 
+func TestPlayerMediaLifecycleScript(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is only needed for browser-script regression checks")
+	}
+	html := playerHTML("https://example.invalid/video.mp4", "/state?token=fixture")
+	script := strings.Split(strings.Split(html, "<script>")[1], "</script>")[0]
+	input, _ := json.Marshal(map[string]string{"script": script})
+	cmd := exec.Command(node, "-e", lifecycleHarness)
+	cmd.Stdin = strings.NewReader(string(input))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("media lifecycle regression: %v\n%s", err, out)
+	}
+}
+
+const lifecycleHarness = `
+const vm=require('node:vm'),assert=require('node:assert/strict');
+const {script}=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+class Element {
+ constructor(tag='DIV'){this.tagName=tag;this.listeners={};this.children=[];this.attrs={};this.hidden=false;this.value='0';this.textContent='';this.style={setProperty:(k,v)=>this.attrs[k]=v};this.dataset={};this.classes=new Set();this.classList={add:x=>this.classes.add(x),remove:x=>this.classes.delete(x),toggle:(x,on)=>on?this.classes.add(x):this.classes.delete(x)};}
+ addEventListener(name,fn){(this.listeners[name]??=[]).push(fn);}
+ emit(name,extra={}){const event={target:this,preventDefault(){this.prevented=true},...extra};for(const fn of this.listeners[name]||[])fn(event);return event;}
+ appendChild(el){this.children.push(el);return el;}
+ get firstChild(){return this.children[0]||null;}
+ removeChild(el){const i=this.children.indexOf(el);if(i>=0)this.children.splice(i,1);}
+ replaceChildren(){this.children=[];}
+ remove(){}
+ after(el){this.afterNode=el;}
+ setAttribute(k,v){this.attrs[k]=v;}
+ getBoundingClientRect(){return this.rect||{left:0,top:0,width:0,height:0};}
+ get offsetWidth(){return (this.rect&&this.rect.width)||0;}
+ scrollIntoView(opts){this.scrolledTo=opts;}
+ contains(el){return el===this||this.children.some(x=>x.contains(el));}
+}
+const els={};const get=id=>els[id]??=(new Element());
+const created=[];
+const pending=[];
+// 逼真的媒体元素：load() 按规范把 playbackRate 复位成 defaultPlaybackRate，
+// play() 返回未完成的 Promise，用来验证换集时旧 play() 会被作废。
+const asMedia=el=>Object.assign(el,{currentTime:0,duration:240,readyState:4,error:null,paused:true,ended:false,muted:false,volume:1,playbackRate:1,defaultPlaybackRate:1,plays:0,
+ load(){this.readyState=0;this.playbackRate=this.defaultPlaybackRate;},
+ play(){this.plays+=1;return new Promise((resolve,reject)=>{pending.push({resolve,reject});});},
+ pause(){this.paused=true;this.emit('pause');}});
+const video=asMedia(get('video'));video.tagName='VIDEO';
+const document=new Element();document.documentElement={clientWidth:900};document.body=new Element();document.getElementById=get;
+document.createElement=tag=>{created.push(tag);const el=new Element(tag.toUpperCase());return tag==='video'?asMedia(el):el;};document.createElementNS=(_,tag)=>new Element(tag);
+document.querySelectorAll=()=>[];
+const window=new Element(),requests=[];let timerID=0;
+vm.runInNewContext(script,{document,window,fetch:(url,options)=>{requests.push({url,...JSON.parse(options.body)});return Promise.resolve({ok:true})},setInterval:()=>1,clearInterval(){},setTimeout:()=>++timerID,clearTimeout(){},setImmediate,console});
+const turn=()=>new Promise(resolve=>setImmediate(resolve));
+const lastState=()=>requests.at(-1);
+const clock=()=>get('time').textContent;
+(async()=>{
+// 1) 换集后进度条仍然推进：单元素换源保留 timeupdate 监听。
+video.currentTime=30;video.emit('timeupdate');
+assert.equal(clock(),'00:30 / 04:00');
+assert.equal(window.playerLoad('https://example.invalid/b.mp4',0),true);
+await turn();
+video.readyState=4;video.duration=240;video.currentTime=75;video.emit('timeupdate');
+assert.equal(clock(),'01:15 / 04:00','进度/时间在换集后必须继续更新');
+assert.equal(get('seek').value,String(Math.round(75/240*1000)));
+// 2) 连续两次换源：只保留最后一次，且全程只有这一个 video 元素。
+assert.equal(window.playerLoad('https://example.invalid/c.mp4',0),true);
+assert.equal(window.playerLoad('https://example.invalid/d.mp4',0),true);
+await turn();
+assert.equal(video.src,'https://example.invalid/d.mp4');
+assert.equal(created.filter(tag=>tag==='video').length,0,'不允许再创建第二个 video 元素');
+assert.equal(Object.values(els).filter(el=>el.tagName==='VIDEO').length,1);
+const generations=requests.map(r=>r.mediaGeneration).filter(v=>Number.isInteger(v));
+assert.equal(generations.at(-1)>=2,true,'每次换源都要推进 mediaGeneration');
+// 3) 被换源打断的旧加载（aborted）不算失败，也不会盖住新片源。
+video.error={code:1};video.emit('error');
+assert.equal(get('hint').textContent,'','换源打断不应提示加载失败');
+video.error=null;video.emit('loadedmetadata');
+await turn();
+assert.equal(lastState().error,0);
+// 4) load() 复位倍速后仍然是 2 倍速。
+window.playerCommand('rate',2);
+assert.equal(video.playbackRate,2);assert.equal(video.defaultPlaybackRate,2);
+window.playerLoad('https://example.invalid/e.mp4',0);
+assert.equal(video.playbackRate,2,'换源后必须保持 2 倍速');
+assert.equal(video.defaultPlaybackRate,2);
+// 即使引擎把 rate 直接重置成 1，也只能是转瞬，必须被拉回 2。
+video.playbackRate=1;video.emit('ratechange');
+assert.equal(video.playbackRate,2);assert.equal(video.defaultPlaybackRate,2);
+// 5) 开始换集：立即静音暂停，旧 play() 成功也不能恢复出声。
+window.playerCommand('play',0);await turn();
+assert.equal(video.plays,1);
+window.playerBeginSwitch();
+assert.equal(video.muted,true,'换集时必须立即静音');
+assert.equal(video.paused,true,'换集时必须立即暂停');
+for(const p of pending)p.resolve();await turn();
+assert.equal(video.paused,true,'旧 play() 完成后不能重新开始播放');
+assert.equal(video.muted,true,'旧 play() 完成后不能恢复出声');
+// 6) 新片源接手后恢复声音，并且仍然只有一个可发声的视频元素。
+window.playerLoad('https://example.invalid/f.mp4',0);
+await turn();
+assert.equal(video.muted,false);assert.equal(video.volume,1);
+assert.equal(Object.values(els).filter(el=>el.tagName==='VIDEO').length,1);
+console.log('single-element progress, latest-wins load, aborted load, 2x across load, and begin-switch silence verified');
+})().catch(error=>{console.error(error);process.exitCode=1});
+`
+
 const controlsHarness = `
 const vm=require('node:vm'),assert=require('node:assert/strict');
 const {script}=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
